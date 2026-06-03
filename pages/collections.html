@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Collections — AustroIndie</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    .filter-tabs { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:40px; }
+    .filter-tab { font-family:'Cinzel',serif; font-size:10px; letter-spacing:.25em; text-transform:uppercase; padding:10px 24px; border:1px solid rgba(201,162,78,.35); color:#8c7b6b; cursor:pointer; background:none; transition:all .2s; }
+    .filter-tab:hover { border-color:#c9a24e; color:#c9a24e; }
+    .filter-tab.active { background:#7a1f2e; color:#faf5ec; border-color:#7a1f2e; }
+    .products-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:20px; }
+    @media(max-width:1024px){ .products-grid{ grid-template-columns:repeat(3,1fr); } }
+    @media(max-width:768px){ .products-grid{ grid-template-columns:repeat(2,1fr); } }
+    @media(max-width:480px){ .products-grid{ grid-template-columns:1fr; } }
+    .product-card.hidden { display:none; }
+  </style>
+</head>
+<body>
+<div id="navPlaceholder"></div>
+
+<!-- PAGE HERO -->
+<div class="page-hero" style="padding-top:96px">
+  <div class="page-hero-jali"></div>
+  <div class="collar"></div>
+  <div class="section-wrap page-hero-inner">
+    <p class="breadcrumb"><a href="../index.html">Home</a> &nbsp;/&nbsp; Collections</p>
+    <h1>All Collections</h1>
+    <p class="hero-sub">Every piece handpicked from the courts of Vienna &amp; Jaipur</p>
+  </div>
+</div>
+
+<!-- MARQUEE -->
+<div class="marquee-wrap">
+  <div class="marquee-track">
+    <span>♛ Handpicked Sarees</span><span>❧ Imitation Jewellery</span><span>♛ Decorative Items</span>
+    <span>❧ WhatsApp Orders</span><span>♛ Free Shipping Above ₹999</span><span>❧ Imperial Quality</span>
+    <span>♛ Handpicked Sarees</span><span>❧ Imitation Jewellery</span><span>♛ Decorative Items</span>
+    <span>❧ WhatsApp Orders</span><span>♛ Free Shipping Above ₹999</span><span>❧ Imperial Quality</span>
+  </div>
+</div>
+
+<!-- PRODUCTS -->
+<section style="padding:80px 0">
+  <div class="section-wrap">
+    <div class="filter-tabs" id="filterTabs">
+      <button class="filter-tab active" data-cat="all">All</button>
+      <button class="filter-tab" data-cat="sarees">Sarees</button>
+      <button class="filter-tab" data-cat="jewellery">Imitation Jewellery</button>
+      <button class="filter-tab" data-cat="decor">Decorative Items</button>
+    </div>
+    <div class="products-grid" id="productsGrid"></div>
+    <div id="emptyState" style="display:none;text-align:center;padding:80px 0;color:#8c7b6b">
+      <p style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:1.5rem">No products in this collection yet.</p>
+      <p style="font-family:'Raleway',sans-serif;font-size:13px;margin-top:8px">Check back soon or browse other categories.</p>
+    </div>
+  </div>
+</section>
+
+<div id="footerPlaceholder"></div>
+
+<script src="../js/main.js"></script>
+<script>
+  document.getElementById('navPlaceholder').outerHTML = injectNav('Collections');
+  document.getElementById('footerPlaceholder').outerHTML = injectFooter();
+
+  let currentFilter = 'all';
+
+  function renderProducts(filter) {
+    const products = getProducts();
+    const filtered = filter === 'all' ? products : products.filter(p => p.category === filter);
+    const grid = document.getElementById('productsGrid');
+    const empty = document.getElementById('emptyState');
+    if (filtered.length === 0) {
+      grid.innerHTML = '';
+      empty.style.display = 'block';
+    } else {
+      empty.style.display = 'none';
+      grid.innerHTML = filtered.map((p,i) => renderProductCard(p, i*0.04)).join('');
+      grid.querySelectorAll('.reveal').forEach(r => {
+        new IntersectionObserver(([e]) => { if(e.isIntersecting) e.target.classList.add('visible'); },{threshold:.08}).observe(r);
+      });
+    }
+  }
+
+  // Filter tabs
+  document.getElementById('filterTabs').addEventListener('click', e => {
+    const tab = e.target.closest('[data-cat]');
+    if (!tab) return;
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentFilter = tab.dataset.cat;
+    renderProducts(currentFilter);
+  });
+
+  // Check URL param
+  const params = new URLSearchParams(window.location.search);
+  const urlCat = params.get('cat');
+  if (urlCat) {
+    const tab = document.querySelector(`[data-cat="${urlCat}"]`);
+    if (tab) {
+      document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentFilter = urlCat;
+    }
+  }
+
+  renderProducts(currentFilter);
+</script>
+</body>
+</html>
