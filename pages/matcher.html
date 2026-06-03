@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Style Personality Matcher — SissyTrends Boutique</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    /* ── Full-screen hero ── */
+    body { margin: 0; overflow-x: hidden; }
+
+    .matcher-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse at 25% 35%, rgba(201,168,76,0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 75% 70%, rgba(107,26,42,0.18) 0%, transparent 55%),
+        linear-gradient(155deg, #4A0F1C 0%, #2D0A14 45%, #1A1410 100%);
+    }
+
+    /* Animated silk-weave pattern overlay */
+    .matcher-pattern {
+      position: fixed; inset: 0; z-index: 0; opacity: 0.06;
+      background-image:
+        repeating-linear-gradient(45deg, rgba(201,168,76,0.8) 0, rgba(201,168,76,0.8) 1px, transparent 1px, transparent 18px),
+        repeating-linear-gradient(-45deg, rgba(201,168,76,0.4) 0, rgba(201,168,76,0.4) 1px, transparent 1px, transparent 18px);
+      animation: patternShift 20s linear infinite;
+    }
+    @keyframes patternShift { from { background-position: 0 0; } to { background-position: 80px 80px; } }
+
+    /* Orbiting decorative circles */
+    .orb {
+      position: fixed; border-radius: 50%;
+      border: 1px solid rgba(201,168,76,0.15);
+      animation: orbSpin linear infinite;
+    }
+    .orb-1 { width: 500px; height: 500px; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-duration: 30s; }
+    .orb-2 { width: 700px; height: 700px; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-duration: 45s; animation-direction: reverse; border-color: rgba(107,26,42,0.2); }
+    .orb-3 { width: 300px; height: 300px; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-duration: 20s; border-color: rgba(201,168,76,0.1); }
+    @keyframes orbSpin { from { transform: translate(-50%,-50%) rotate(0deg); } to { transform: translate(-50%,-50%) rotate(360deg); } }
+
+    /* Floating saree + jewel icons */
+    .float-icon {
+      position: fixed; font-size: 28px; opacity: 0.08;
+      animation: floatAround ease-in-out infinite;
+      pointer-events: none;
+    }
+    .float-icon:nth-child(1)  { top: 12%; left: 8%;  animation-duration: 7s;  animation-delay: 0s;   }
+    .float-icon:nth-child(2)  { top: 22%; right: 10%; animation-duration: 9s; animation-delay: 1s;   }
+    .float-icon:nth-child(3)  { bottom: 20%; left: 12%; animation-duration: 8s; animation-delay: 2s; }
+    .float-icon:nth-child(4)  { bottom: 30%; right: 8%; animation-duration: 6s; animation-delay: 0.5s;}
+    .float-icon:nth-child(5)  { top: 60%; left: 5%;  animation-duration: 10s; animation-delay: 3s;  }
+    .float-icon:nth-child(6)  { top: 40%; right: 6%; animation-duration: 7.5s;animation-delay: 1.5s;}
+    @keyframes floatAround { 0%,100%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-18px) rotate(8deg)} }
+
+    /* Main content */
+    .matcher-hero {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      position: relative; z-index: 10;
+      padding: 120px 24px 80px;
+    }
+    .matcher-content { text-align: center; max-width: 720px; }
+
+    .maintenance-badge {
+      display: inline-flex; align-items: center; gap: 10px;
+      border: 1px solid rgba(201,168,76,0.45);
+      padding: 8px 22px; margin-bottom: 36px;
+      font-family: var(--font-body); font-size: 9.5px;
+      letter-spacing: 4px; text-transform: uppercase;
+      color: var(--gold-lt);
+    }
+    .maintenance-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--gold); flex-shrink: 0;
+      animation: blink 1.5s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+
+    .matcher-icon-main {
+      font-size: 72px; display: block; margin-bottom: 28px;
+      animation: iconFloat 4s ease-in-out infinite;
+    }
+    @keyframes iconFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-14px)} }
+
+    .matcher-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.2rem, 5.5vw, 4.2rem);
+      font-weight: 300; color: var(--cream);
+      line-height: 1.15; margin-bottom: 12px;
+    }
+    .matcher-title em { font-style: italic; color: var(--gold-lt); }
+
+    .matcher-subtitle {
+      font-family: var(--font-display); font-style: italic;
+      font-size: 1.2rem; color: rgba(250,246,240,0.5);
+      margin-bottom: 32px; letter-spacing: 0.5px;
+    }
+
+    .matcher-teaser {
+      font-family: var(--font-body); font-size: 14px; font-weight: 300;
+      line-height: 2; color: rgba(250,246,240,0.55);
+      max-width: 560px; margin: 0 auto 48px;
+    }
+
+    /* Gold divider */
+    .gold-div-light {
+      width: 100px; height: 1px; margin: 0 auto 40px;
+      background: linear-gradient(90deg, transparent, rgba(201,168,76,0.6), transparent);
+    }
+
+    /* Feature preview cards */
+    .matcher-features {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 16px; margin-bottom: 52px;
+    }
+    @media(max-width: 640px) { .matcher-features { grid-template-columns: 1fr; } }
+    .matcher-feature {
+      background: rgba(250,246,240,0.04);
+      border: 1px solid rgba(201,168,76,0.18);
+      padding: 24px 20px;
+      transition: background 0.3s, border-color 0.3s;
+    }
+    .matcher-feature:hover {
+      background: rgba(250,246,240,0.07);
+      border-color: rgba(201,168,76,0.35);
+    }
+    .matcher-feature-icon { font-size: 28px; margin-bottom: 12px; display: block; }
+    .matcher-feature-title {
+      font-family: var(--font-body); font-size: 10px;
+      letter-spacing: 2.5px; text-transform: uppercase;
+      color: var(--gold); margin-bottom: 8px;
+    }
+    .matcher-feature-desc {
+      font-family: var(--font-body); font-size: 12.5px;
+      font-weight: 300; color: rgba(250,246,240,0.42);
+      line-height: 1.75;
+    }
+
+    /* How it will work */
+    .how-it-works {
+      background: rgba(250,246,240,0.03);
+      border: 1px solid rgba(201,168,76,0.15);
+      padding: 32px; margin-bottom: 48px; text-align: left;
+    }
+    .how-title {
+      font-family: var(--font-body); font-size: 9.5px;
+      letter-spacing: 4px; text-transform: uppercase; color: var(--gold);
+      margin-bottom: 20px; text-align: center;
+    }
+    .how-steps { display: flex; flex-direction: column; gap: 14px; }
+    .how-step {
+      display: flex; align-items: flex-start; gap: 16px;
+    }
+    .how-step-num {
+      width: 28px; height: 28px; flex-shrink: 0;
+      border: 1px solid rgba(201,168,76,0.4);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-display); font-size: 14px; color: var(--gold);
+    }
+    .how-step-text {
+      font-family: var(--font-body); font-size: 13px;
+      font-weight: 300; color: rgba(250,246,240,0.55);
+      line-height: 1.7;
+    }
+    .how-step-text strong {
+      font-weight: 400; color: rgba(250,246,240,0.8);
+    }
+
+    /* Waitlist form */
+    .waitlist-section { margin-bottom: 40px; }
+    .waitlist-label {
+      font-family: var(--font-body); font-size: 10px;
+      letter-spacing: 3px; text-transform: uppercase;
+      color: rgba(250,246,240,0.5); margin-bottom: 16px;
+      display: block;
+    }
+    .waitlist-form { display: flex; max-width: 460px; margin: 0 auto; gap: 0; }
+    .waitlist-input {
+      flex: 1; padding: 15px 20px;
+      background: rgba(250,246,240,0.07);
+      border: 1px solid rgba(201,168,76,0.3); border-right: none;
+      color: var(--cream); font-family: var(--font-body); font-size: 13px;
+      outline: none; transition: border-color 0.3s;
+    }
+    .waitlist-input::placeholder { color: rgba(250,246,240,0.3); }
+    .waitlist-input:focus { border-color: rgba(201,168,76,0.7); }
+    .waitlist-btn {
+      padding: 15px 28px; background: var(--gold);
+      border: 1px solid var(--gold); color: var(--black);
+      font-family: var(--font-body); font-size: 10px;
+      letter-spacing: 2.5px; text-transform: uppercase;
+      cursor: pointer; transition: all 0.3s; white-space: nowrap;
+    }
+    .waitlist-btn:hover { background: var(--gold-dk); color: var(--cream); border-color: var(--gold-dk); }
+    .waitlist-success {
+      display: none; margin-top: 14px;
+      font-family: var(--font-display); font-style: italic;
+      font-size: 1rem; color: var(--gold-lt); text-align: center;
+    }
+
+    /* Back link */
+    .back-link {
+      font-family: var(--font-body); font-size: 10px;
+      letter-spacing: 3px; text-transform: uppercase;
+      color: rgba(250,246,240,0.3); transition: color 0.3s;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .back-link:hover { color: var(--gold-lt); }
+
+    /* Navbar override for dark bg */
+    #navbar:not(.scrolled) .nav-logo-name,
+    #navbar:not(.scrolled) .nav-links > li > a,
+    #navbar:not(.scrolled) .nav-icon-btn { color: rgba(250,246,240,0.85); }
+    #navbar:not(.scrolled) .nav-logo-sub { color: rgba(201,168,76,0.7); }
+    #navbar:not(.scrolled) .nav-links > li > a.nav-special { color: var(--gold-lt); border-color: rgba(201,168,76,0.5); }
+    #navbar:not(.scrolled) .nav-hamburger span { background: rgba(250,246,240,0.8); }
+  </style>
+</head>
+<body>
+
+<!-- Layered background -->
+<div class="matcher-bg"></div>
+<div class="matcher-pattern"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<!-- Floating ambient icons -->
+<div class="float-icon">🥻</div>
+<div class="float-icon">💎</div>
+<div class="float-icon">🌸</div>
+<div class="float-icon">✨</div>
+<div class="float-icon">🪡</div>
+<div class="float-icon">👑</div>
+
+<div id="navPlaceholder"></div>
+
+<div class="matcher-hero">
+  <div class="matcher-content">
+
+    <!-- Status badge -->
+    <div class="maintenance-badge">
+      <span class="maintenance-dot"></span>
+      Coming Soon — We're Weaving Something Special
+    </div>
+
+    <!-- Icon -->
+    <span class="matcher-icon-main">🪢</span>
+
+    <!-- Headline -->
+    <h1 class="matcher-title">
+      Your <em>Style</em><br>Personality Matcher
+    </h1>
+    <p class="matcher-subtitle">Mix. Match. Order as a Bundle.</p>
+
+    <div class="gold-div-light"></div>
+
+    <!-- Teaser -->
+    <p class="matcher-teaser">
+      We are building something truly personal for you — a styling experience that understands your taste, your occasion, and your personality. Tell us who you are, and we'll show you exactly what to wear, from saree to jewels, as a complete curated bundle.
+    </p>
+
+    <!-- Feature preview cards -->
+    <div class="matcher-features">
+      <div class="matcher-feature">
+        <span class="matcher-feature-icon">🥻</span>
+        <div class="matcher-feature-title">Saree Matching</div>
+        <p class="matcher-feature-desc">Answer a few style questions and get saree recommendations tailored to your personality and occasion.</p>
+      </div>
+      <div class="matcher-feature">
+        <span class="matcher-feature-icon">💎</span>
+        <div class="matcher-feature-title">Jewellery Pairing</div>
+        <p class="matcher-feature-desc">Every saree suggestion comes with perfectly matched imitation jewellery, curated to complete the look.</p>
+      </div>
+      <div class="matcher-feature">
+        <span class="matcher-feature-icon">🛍</span>
+        <div class="matcher-feature-title">Bundle Orders</div>
+        <p class="matcher-feature-desc">Order your full styled look — saree + jewellery — as a single bundle, with one click via WhatsApp.</p>
+      </div>
+    </div>
+
+    <!-- How it will work -->
+    <div class="how-it-works">
+      <p class="how-title">How It Will Work</p>
+      <div class="how-steps">
+        <div class="how-step">
+          <div class="how-step-num">1</div>
+          <div class="how-step-text"><strong>Tell us about you</strong> — answer a short style quiz: your occasion, colour palette preference, and personality vibe.</div>
+        </div>
+        <div class="how-step">
+          <div class="how-step-num">2</div>
+          <div class="how-step-text"><strong>We match your style</strong> — our system picks the best sarees and jewellery from our collection that fit your profile.</div>
+        </div>
+        <div class="how-step">
+          <div class="how-step-num">3</div>
+          <div class="how-step-text"><strong>See the complete look</strong> — explore full outfit visualisations with saree + jewellery together.</div>
+        </div>
+        <div class="how-step">
+          <div class="how-step-num">4</div>
+          <div class="how-step-text"><strong>Order as a bundle</strong> — add your favourite complete look to cart and order with a single WhatsApp message to us.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Waitlist -->
+    <div class="waitlist-section">
+      <span class="waitlist-label">Be the first to know — join the waitlist</span>
+      <div class="waitlist-form">
+        <input type="email" id="waitlistEmail" class="waitlist-input" placeholder="your@email.com"/>
+        <button class="waitlist-btn" onclick="joinWaitlist()">Notify Me</button>
+      </div>
+      <div class="waitlist-success" id="waitlistSuccess">
+        ✦ You're on the list! We'll reach out the moment it's ready.
+      </div>
+    </div>
+
+    <!-- WhatsApp interim CTA -->
+    <div style="margin-bottom:40px;padding:20px 24px;border:1px solid rgba(201,168,76,0.2);background:rgba(250,246,240,0.03)">
+      <p style="font-family:var(--font-body);font-size:12px;font-weight:300;color:rgba(250,246,240,0.45);margin-bottom:14px;letter-spacing:0.5px">
+        Until the matcher launches — our stylists are available on WhatsApp to do this for you personally
+      </p>
+      <a href="https://wa.me/919344182144?text=Hi%20SissyTrends!%20I%27d%20love%20a%20personalised%20saree%20and%20jewellery%20match%20for%20my%20occasion." target="_blank">
+        <button class="btn-wa" style="margin:0 auto;display:inline-flex">
+          <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.528 5.84L.057 23.5l5.797-1.499A11.938 11.938 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.854 0-3.6-.497-5.11-1.367l-.366-.218-3.44.889.921-3.32-.239-.384A9.955 9.955 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+          Get a Personal Style Match Now
+        </button>
+      </a>
+    </div>
+
+    <a href="../index.html" class="back-link">← Back to Boutique</a>
+
+  </div>
+</div>
+
+<div id="footerPlaceholder"></div>
+
+<script src="../js/main.js"></script>
+<script>
+  document.getElementById('navPlaceholder').outerHTML  = injectNav('Matcher', false);
+  document.getElementById('footerPlaceholder').outerHTML = injectFooter(false);
+
+  function joinWaitlist() {
+    const email = document.getElementById('waitlistEmail').value.trim();
+    if (!email || !email.includes('@')) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+    // Store in localStorage (replace with real backend later)
+    const list = JSON.parse(localStorage.getItem('st_waitlist') || '[]');
+    if (!list.includes(email)) { list.push(email); localStorage.setItem('st_waitlist', JSON.stringify(list)); }
+    document.getElementById('waitlistEmail').value = '';
+    document.getElementById('waitlistSuccess').style.display = 'block';
+    setTimeout(() => document.getElementById('waitlistSuccess').style.display = 'none', 5000);
+  }
+</script>
+</body>
+</html>

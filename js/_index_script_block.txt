@@ -1,0 +1,207 @@
+<script src="js/main.js"></script>
+<script>
+  /* ── Inject shared nav & footer ── */
+  document.getElementById('navPlaceholder').outerHTML   = injectNav('Home', true);
+  document.getElementById('footerPlaceholder').outerHTML = injectFooter(true);
+
+  /* ──────────────────────────────────────────────────────
+     WISHLIST — toggle save / unsave (no duplicates)
+     IDs stored as JSON array in sessionStorage
+  ────────────────────────────────────────────────────── */
+  function getWishlistIds() {
+    try { return JSON.parse(sessionStorage.getItem('st_wl_ids') || '[]'); }
+    catch { return []; }
+  }
+  function setWishlistIds(ids) {
+    sessionStorage.setItem('st_wl_ids', JSON.stringify(ids));
+    const badge = document.getElementById('wishlistBadge');
+    if (badge) badge.textContent = ids.length;
+  }
+  /* Restore badge on page load */
+  (function() {
+    const b = document.getElementById('wishlistBadge');
+    if (b) b.textContent = getWishlistIds().length;
+  })();
+
+  /* Called by individual product Save buttons */
+  function toggleSave(id, name, btn) {
+    let ids = getWishlistIds();
+    const key = String(id);
+    if (ids.includes(key)) {
+      ids = ids.filter(i => i !== key);
+      setWishlistIds(ids);
+      if (btn) btn.textContent = '♡ Save';
+      showToast(`Removed "${name}" from wishlist`);
+    } else {
+      ids.push(key);
+      setWishlistIds(ids);
+      if (btn) btn.textContent = '♥ Saved';
+      showToast(`❤ "${name}" added to wishlist`);
+    }
+  }
+
+  /* Called by the "Save Look" button in the Styled Looks section */
+  function toggleSaveLook(btn) {
+    const key = 'look-bridal-dawn';
+    let ids = getWishlistIds();
+    if (ids.includes(key)) {
+      ids = ids.filter(i => i !== key);
+      setWishlistIds(ids);
+      if (btn) btn.textContent = 'Save Look ♡';
+      showToast('Removed Bridal Dawn Look from wishlist');
+    } else {
+      ids.push(key);
+      setWishlistIds(ids);
+      if (btn) btn.textContent = '♥ Look Saved';
+      showToast('❤ Bridal Dawn Look saved to wishlist');
+    }
+  }
+
+  /* Top-right ♡ icon — show count info */
+  function navWishlistClick() {
+    const count = getWishlistIds().length;
+    showToast(count === 0
+      ? 'Your wishlist is empty — save items to see them here'
+      : `You have ${count} saved item${count > 1 ? 's' : ''} ♡`
+    );
+  }
+
+  /* ──────────────────────────────────────────────────────
+     REVEAL observer (for dynamically injected cards)
+  ────────────────────────────────────────────────────── */
+  function observeNew(root) {
+    if (!root) return;
+    root.querySelectorAll('.reveal:not(.visible)').forEach(r => {
+      new IntersectionObserver(([e]) => {
+        if (e.isIntersecting) e.target.classList.add('visible');
+      }, { threshold: 0.08 }).observe(r);
+    });
+  }
+
+  /* ──────────────────────────────────────────────────────
+     FEATURED SAREES — uses real product images from /Images
+  ────────────────────────────────────────────────────── */
+  const products = getProducts();
+  const sarees   = products.filter(p => p.category === 'sarees').slice(0, 5);
+  const sgEl     = document.getElementById('featuredSareeGrid');
+
+  if (sgEl) {
+    sgEl.innerHTML = sarees.map((p, i) => {
+      const delay  = i * 0.07;
+      const safeFab  = (p.fabric || '').replace(/'/g, "\\'");
+      const safeName = p.name.replace(/'/g, "\\'");
+      const safeDesc = (p.desc || '').replace(/'/g, "\\'");
+      const isSaved  = getWishlistIds().includes(String(p.id));
+      return `
+        <div class="saree-card reveal" style="transition-delay:${delay}s"
+             onclick="openModal('${safeFab}','${safeName}','${safeDesc}','₹${p.price.toLocaleString()}','${p.img}')">
+          <img class="saree-img" src="${p.img}" alt="${p.name}"
+               onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#EAD9C4,#E8C5C0)';this.parentElement.style.aspectRatio='3/4'"/>
+          <div class="saree-badge">${p.badge}</div>
+          <div class="saree-overlay"></div>
+          <div class="saree-info">
+            <div class="saree-fabric">${p.fabric || p.subcategory}</div>
+            <div class="saree-name">${p.name}</div>
+            <div class="saree-price">₹${p.price.toLocaleString()}</div>
+            <div class="saree-actions">
+              <button class="saree-btn saree-btn-view"
+                onclick="event.stopPropagation();openModal('${safeFab}','${safeName}','${safeDesc}','₹${p.price.toLocaleString()}','${p.img}')">
+                Quick View
+              </button>
+              <button class="saree-btn saree-btn-wish"
+                id="wish-${p.id}"
+                onclick="event.stopPropagation();toggleSave(${p.id},'${safeName}',this)">
+                ${isSaved ? '♥ Saved' : '♡ Save'}
+              </button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+    observeNew(sgEl);
+  }
+
+  /* ──────────────────────────────────────────────────────
+     JEWELLERY GRID — real product images, real names
+     (no CSS gradients as placeholders — shows actual photos)
+  ────────────────────────────────────────────────────── */
+  const jwls  = products.filter(p => p.category === 'jewellery').slice(0, 4);
+  const jwlEl = document.getElementById('jwlGrid');
+
+  if (jwlEl) {
+    jwlEl.innerHTML = jwls.map((p, i) => {
+      const delay    = i * 0.09;
+      const safeType = (p.type || p.subcategory || '').replace(/'/g, "\\'");
+      const safeName = p.name.replace(/'/g, "\\'");
+      const safeDesc = (p.desc || '').replace(/'/g, "\\'");
+      const isSaved  = getWishlistIds().includes(String(p.id));
+      return `
+        <div class="jwl-card reveal" style="transition-delay:${delay}s"
+             onclick="openModal('${safeType}','${safeName}','${safeDesc}','₹${p.price.toLocaleString()}','${p.img}')">
+          <div class="jwl-img-wrap">
+            <img src="${p.img}" alt="${p.name}"
+                 style="width:100%;height:100%;object-fit:cover;display:block"
+                 onerror="this.style.display='none';this.closest('.jwl-img-wrap').style.background='linear-gradient(135deg,#2D2520,#8B7355,#4A0F1C)'"/>
+            <div class="jwl-glow"></div>
+          </div>
+          <div class="jwl-info">
+            <div class="jwl-type">${p.type || p.subcategory}</div>
+            <div class="jwl-name">${p.name}</div>
+            <div class="jwl-price">₹${p.price.toLocaleString()}</div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button style="padding:7px 14px;font-family:var(--font-body);font-size:9px;letter-spacing:2px;text-transform:uppercase;background:rgba(201,168,76,0.15);color:var(--gold-lt);border:1px solid rgba(201,168,76,0.3);cursor:pointer;transition:all .25s"
+                onclick="event.stopPropagation();openModal('${safeType}','${safeName}','${safeDesc}','₹${p.price.toLocaleString()}','${p.img}')">
+                Quick View
+              </button>
+              <button style="padding:7px 14px;font-family:var(--font-body);font-size:9px;letter-spacing:2px;text-transform:uppercase;background:transparent;color:var(--gold-lt);border:1px solid rgba(201,168,76,0.3);cursor:pointer;transition:all .25s"
+                id="wish-jwl-${p.id}"
+                onclick="event.stopPropagation();toggleSave(${p.id},'${safeName}',this)">
+                ${isSaved ? '♥ Saved' : '♡ Save'}
+              </button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+    observeNew(jwlEl);
+  }
+
+  /* ──────────────────────────────────────────────────────
+     GALLERY — real local images only, no external URLs
+  ────────────────────────────────────────────────────── */
+  const galleryImgs = [
+    'Images/Saree1.jpeg',
+    'Images/Imitation jewels/Heartin on Saree.jpeg',
+    'Images/saree2.jpeg',
+    'Images/Imitation jewels/Pearl ear.jpeg',
+    'Images/V Saree 1.jpeg',
+    'Images/Imitation jewels/Squares.jpeg',
+    'Images/V Saree 2.jpeg',
+    'Images/Imitation jewels/WhatsApp Image 2026-03-04 at 19.29.31.jpeg',
+    'Images/saree3.jpeg',
+  ];
+  const galleryEl = document.getElementById('galleryGrid');
+  if (galleryEl) {
+    galleryEl.innerHTML = galleryImgs.map((src, i) => `
+      <div class="gallery-item" style="aspect-ratio:1">
+        <img class="gallery-img" src="${src}" alt="SissyTrends Style ${i+1}"
+             style="width:100%;height:100%;object-fit:cover;display:block"
+             onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#EAD9C4,#6B1A2A44)'"/>
+        <div class="gallery-overlay">♡</div>
+      </div>`).join('');
+  }
+
+  /* ── Look thumb swap ── */
+  function swapLook(thumb, src) {
+    document.querySelectorAll('.look-thumb').forEach(t => t.classList.remove('active'));
+    thumb.classList.add('active');
+    const mainImg = document.querySelector('.look-main-img img');
+    if (mainImg) mainImg.src = src;
+  }
+
+  /* ── Fabric chip select ── */
+  function selectFabric(chip) {
+    document.querySelectorAll('.fabric-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+  }
+</script>
+</body>
+</html>
