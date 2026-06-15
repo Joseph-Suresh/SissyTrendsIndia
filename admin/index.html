@@ -186,6 +186,7 @@
         <button onclick="filterTable('sarees')"    class="admin-tab"        id="ftab-sarees"    style="padding:8px 16px;font-size:9px">Sarees</button>
         <button onclick="filterTable('jewellery')" class="admin-tab"        id="ftab-jewellery" style="padding:8px 16px;font-size:9px">Jewellery</button>
         <button onclick="filterTable('decor')"     class="admin-tab"        id="ftab-decor"     style="padding:8px 16px;font-size:9px">Décor</button>
+        <button onclick="exportCSV()" style="padding:8px 16px;font-size:9px;letter-spacing:.15em;text-transform:uppercase;background:none;border:1px solid rgba(201,162,78,.4);color:#c9a24e;cursor:pointer;font-family:'Jost',sans-serif">&#8595; Export CSV</button>
       </div>
     </div>
     <div class="table-wrap">
@@ -691,6 +692,18 @@ function updateAvailabilityLabel() {
   if (!avEl || !label) return;
   label.textContent = avEl.checked ? 'Available' : 'Not Available';
   label.style.color = avEl.checked ? '#2ea043' : 'rgba(220,80,80,.8)';
+}
+
+function exportCSV() {
+  const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000' : '';
+  const a = document.createElement('a');
+  a.href = base + '/api/export/csv';
+  a.download = 'products_CSVBasic.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showAdminToast('CSV downloaded ✦ Replace products_CSVBasic.csv in project and push to GitHub');
 }
 
 function filterProductsBySearch(query) {
