@@ -31,6 +31,7 @@ function getApiBase(path) {
     ? 'http://localhost:5000' + path
     : path;
 }
+const STORE_KEY       = 'sissytrends_products_v3';
 const WISHLIST_KEY    = 'st_wishlist_items';
 const _productCache   = {}; // id → product, populated when products are fetched from API
 
