@@ -189,9 +189,45 @@
         <button onclick="exportCSV()" style="padding:8px 16px;font-size:9px;letter-spacing:.15em;text-transform:uppercase;background:none;border:1px solid rgba(201,162,78,.4);color:#c9a24e;cursor:pointer;font-family:'Jost',sans-serif">&#8595; Export CSV</button>
       </div>
     </div>
+    <!-- Search + Subcategory filter -->
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-start">
+      <input type="text" id="productSearchInput" placeholder="Search by name or product ID…"
+        oninput="applyFilters()"
+        style="flex:1;min-width:200px;padding:9px 14px;background:rgba(250,245,236,.05);
+               border:1px solid rgba(201,162,78,.25);color:#faf5ec;
+               font-family:'Jost',sans-serif;font-size:12px;outline:none"/>
+      <div style="position:relative">
+        <button onclick="toggleSubcatDropdown()"
+          style="padding:9px 16px;background:rgba(250,245,236,.05);border:1px solid rgba(201,162,78,.25);
+                 color:#c9a24e;font-family:'Jost',sans-serif;font-size:11px;cursor:pointer;
+                 letter-spacing:.1em;text-transform:uppercase">
+          Subcategory ▾
+        </button>
+        <div id="subcatDropdown"
+          style="display:none;position:absolute;top:100%;left:0;z-index:100;min-width:220px;
+                 background:#1a0a06;border:1px solid rgba(201,162,78,.25);padding:12px;
+                 box-shadow:0 8px 32px rgba(0,0,0,.4)">
+          <div style="font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:rgba(201,162,78,.5);margin-bottom:8px">Filter by Subcategory</div>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;color:#faf5ec;font-size:12px;cursor:pointer"><input type="checkbox" value="soft-silk"            onchange="applyFilters()" style="accent-color:#c9a24e"> Soft Silk</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;color:#faf5ec;font-size:12px;cursor:pointer"><input type="checkbox" value="Maheswari Silk Cotton" onchange="applyFilters()" style="accent-color:#c9a24e"> Maheswari Silk Cotton</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;color:#faf5ec;font-size:12px;cursor:pointer"><input type="checkbox" value="Fancy Silk"            onchange="applyFilters()" style="accent-color:#c9a24e"> Fancy Silk</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;color:#faf5ec;font-size:12px;cursor:pointer"><input type="checkbox" value="Cool Cotton"           onchange="applyFilters()" style="accent-color:#c9a24e"> Cool Cotton</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;color:#faf5ec;font-size:12px;cursor:pointer"><input type="checkbox" value="cotton-linen"          onchange="applyFilters()" style="accent-color:#c9a24e"> Cotton &amp; Linen</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;color:#faf5ec;font-size:12px;cursor:pointer"><input type="checkbox" value="necklace-sets"         onchange="applyFilters()" style="accent-color:#c9a24e"> Necklace Sets</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;color:#faf5ec;font-size:12px;cursor:pointer"><input type="checkbox" value="earrings"              onchange="applyFilters()" style="accent-color:#c9a24e"> Earrings</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;color:#faf5ec;font-size:12px;cursor:pointer"><input type="checkbox" value="full-sets"             onchange="applyFilters()" style="accent-color:#c9a24e"> Full Sets</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;color:#faf5ec;font-size:12px;cursor:pointer"><input type="checkbox" value="bridal"                onchange="applyFilters()" style="accent-color:#c9a24e"> Bridal Collection</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;color:#faf5ec;font-size:12px;cursor:pointer"><input type="checkbox" value="diyas"                 onchange="applyFilters()" style="accent-color:#c9a24e"> Diyas &amp; Lamps</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;color:#faf5ec;font-size:12px;cursor:pointer"><input type="checkbox" value="gifting"               onchange="applyFilters()" style="accent-color:#c9a24e"> Gifting</label>
+          <button onclick="clearSubcatFilter()"
+            style="margin-top:10px;width:100%;padding:6px;background:none;border:1px solid rgba(201,162,78,.2);
+                   color:rgba(201,162,78,.6);font-family:'Jost',sans-serif;font-size:10px;cursor:pointer">Clear Filter</button>
+        </div>
+      </div>
+    </div>
     <div class="table-wrap">
       <table class="product-table">
-        <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Subcategory</th><th>Badge</th><th>Price</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Image</th><th>Product ID</th><th>Name</th><th>Category</th><th>Subcategory</th><th>Badge</th><th>Price</th><th>Actions</th></tr></thead>
         <tbody id="productsTableBody"></tbody>
       </table>
     </div>
