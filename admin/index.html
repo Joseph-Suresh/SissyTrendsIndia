@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Portal — SissyTrends Boutique</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="../css/style.css"/>
+  <style>
+    body { background:#1a0a06; color:#faf5ec; }
+    body::before { opacity:.015; }
+
+    /* ── Login screen ── */
+    #loginScreen {
+      min-height:100vh; display:flex; align-items:center; justify-content:center;
+      background: radial-gradient(ellipse at 40% 30%,rgba(201,162,78,.1) 0%,transparent 60%),
+                  radial-gradient(ellipse at 70% 80%,rgba(122,31,46,.15) 0%,transparent 60%),
+                  #1a0a06;
+    }
+    .login-box { width:100%; max-width:420px; border:1px solid rgba(201,162,78,.25); padding:56px 40px; position:relative; }
+    .login-box::before { content:''; position:absolute; inset:8px; border:1px solid rgba(201,162,78,.1); pointer-events:none; }
+    .login-input { width:100%; background:rgba(250,245,236,.06); border:1px solid rgba(201,162,78,.25); color:#faf5ec; padding:14px 16px; font-family:'Jost',sans-serif; font-size:14px; margin-bottom:16px; transition:border-color .2s; }
+    .login-input:focus { outline:none; border-color:#c9a24e; }
+    .login-input::placeholder { color:rgba(250,245,236,.3); }
+    .login-error { color:#e8a0a0; font-family:'Jost',sans-serif; font-size:12px; letter-spacing:.05em; margin-bottom:16px; display:none; }
+
+    /* ── Admin dashboard ── */
+    #adminPanel { display:none; }
+    .admin-header { background:rgba(250,245,236,.04); border-bottom:1px solid rgba(201,162,78,.15); padding:16px 0; position:sticky; top:0; z-index:100; backdrop-filter:blur(8px); }
+    .admin-header-inner { max-width:1280px; margin:0 auto; padding:0 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+    .admin-tabs { display:flex; gap:0; border:1px solid rgba(201,162,78,.2); }
+    .admin-tab { font-family:'Jost',sans-serif; font-size:10px; letter-spacing:.2em; text-transform:uppercase; padding:10px 20px; background:none; border:none; color:rgba(201,162,78,.6); cursor:pointer; transition:all .2s; border-right:1px solid rgba(201,162,78,.2); }
+    .admin-tab:last-child { border-right:none; }
+    .admin-tab.active { background:#c9a24e; color:#1a0a06; font-weight:500; }
+    .admin-section { display:none; max-width:1280px; margin:0 auto; padding:40px 24px; }
+    .admin-section.active { display:block; }
+
+    /* ── Form ── */
+    .admin-form { background:rgba(250,245,236,.04); border:1px solid rgba(201,162,78,.15); padding:32px; position:relative; max-width:640px; }
+    .admin-form::before { content:''; position:absolute; inset:6px; border:1px solid rgba(201,162,78,.07); pointer-events:none; }
+    .field-label { font-family:'Jost',sans-serif; font-size:9px; letter-spacing:.35em; text-transform:uppercase; color:rgba(201,162,78,.7); display:block; margin-bottom:8px; }
+    .field-input { width:100%; background:rgba(250,245,236,.06); border:1px solid rgba(201,162,78,.2); color:#faf5ec; padding:12px 14px; font-family:'Jost',sans-serif; font-size:14px; margin-bottom:20px; transition:border-color .2s; }
+    .field-input:focus { outline:none; border-color:#c9a24e; }
+    .field-input::placeholder { color:rgba(250,245,236,.25); }
+    select.field-input option { background:#2a1a0e; color:#faf5ec; }
+    .field-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    @media(max-width:600px){ .field-row{ grid-template-columns:1fr; } }
+
+    /* ── Product table ── */
+    .product-table { width:100%; border-collapse:collapse; }
+    .product-table th { font-family:'Jost',sans-serif; font-size:9px; letter-spacing:.25em; text-transform:uppercase; color:rgba(201,162,78,.7); padding:12px 16px; text-align:left; border-bottom:1px solid rgba(201,162,78,.2); }
+    .product-table td { padding:14px 16px; font-family:'Jost',sans-serif; font-size:13px; color:rgba(250,245,236,.75); border-bottom:1px solid rgba(201,162,78,.08); vertical-align:middle; }
+    .product-table tr:hover td { background:rgba(201,162,78,.04); }
+    .product-table img { width:48px; height:48px; object-fit:cover; border:1px solid rgba(201,162,78,.2); }
+    .table-wrap { overflow-x:auto; }
+    .badge-pill { display:inline-block; font-family:'Jost',sans-serif; font-size:8px; letter-spacing:.2em; padding:2px 8px; border:1px solid rgba(201,162,78,.4); color:rgba(201,162,78,.8); text-transform:uppercase; }
+    .btn-delete { font-family:'Jost',sans-serif; font-size:8px; letter-spacing:.15em; text-transform:uppercase; padding:6px 12px; border:1px solid rgba(220,80,80,.4); color:rgba(220,80,80,.8); background:none; cursor:pointer; transition:all .2s; }
+    .btn-delete:hover { background:rgba(220,80,80,.15); border-color:rgba(220,80,80,.8); }
+    .btn-edit { font-family:'Jost',sans-serif; font-size:8px; letter-spacing:.15em; text-transform:uppercase; padding:6px 12px; border:1px solid rgba(201,162,78,.3); color:rgba(201,162,78,.8); background:none; cursor:pointer; transition:all .2s; margin-right:6px; }
+    .btn-edit:hover { background:rgba(201,162,78,.1); border-color:#c9a24e; }
+
+    /* ── Stats ── */
+    .stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:40px; }
+    @media(max-width:768px){ .stats-grid{ grid-template-columns:repeat(2,1fr); } }
+    .stat-card { background:rgba(250,245,236,.04); border:1px solid rgba(201,162,78,.15); padding:24px; text-align:center; }
+    .stat-num { font-family:'Cormorant Garamond',serif; font-size:2rem; color:#c9a24e; }
+    .stat-label { font-family:'Jost',sans-serif; font-size:11px; letter-spacing:.15em; text-transform:uppercase; color:rgba(250,245,236,.4); margin-top:4px; }
+
+    /* ── Toast ── */
+    #adminToast { position:fixed; bottom:32px; left:50%; transform:translateX(-50%) translateY(80px); background:linear-gradient(135deg,#c9a24e,#a07830); color:#1a0a06; padding:14px 28px; font-family:'Jost',sans-serif; font-size:11px; letter-spacing:.15em; text-transform:uppercase; transition:transform .35s cubic-bezier(0.4,0,0.2,1); pointer-events:none; z-index:999; white-space:nowrap; }
+    #adminToast.show { transform:translateX(-50%) translateY(0); }
+
+    .section-heading { font-family:'Cormorant Garamond',serif; font-size:1.4rem; letter-spacing:.08em; color:#faf5ec; margin-bottom:24px; display:flex; align-items:center; gap:12px; }
+    .section-heading::after { content:''; flex:1; height:1px; background:linear-gradient(90deg,rgba(201,162,78,.3),transparent); }
+    .security-banner { background:rgba(201,162,78,.07); border:1px solid rgba(201,162,78,.2); border-left:3px solid #c9a24e; padding:12px 16px; font-family:'Jost',sans-serif; font-size:11px; color:rgba(201,162,78,.8); margin-bottom:24px; display:flex; align-items:center; gap:10px; }
+    /* Toggle switch */
+    .toggle-wrap { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .toggle-label { font-family:'Jost',sans-serif; font-size:9px; letter-spacing:.35em; text-transform:uppercase; color:rgba(201,162,78,.7); }
+    .toggle-switch { position:relative; width:48px; height:26px; }
+    .toggle-switch input { opacity:0; width:0; height:0; }
+    .toggle-slider { position:absolute; cursor:pointer; inset:0; background:rgba(250,245,236,.1); border:1px solid rgba(201,162,78,.2); transition:.3s; }
+    .toggle-slider:before { content:''; position:absolute; height:18px; width:18px; left:3px; bottom:3px; background:rgba(250,245,236,.4); transition:.3s; }
+    .toggle-switch input:checked + .toggle-slider { background:rgba(46,160,67,.25); border-color:#2ea043; }
+    .toggle-switch input:checked + .toggle-slider:before { transform:translateX(22px); background:#2ea043; }
+    .toggle-status { font-family:'Jost',sans-serif; font-size:12px; }
+    /* Analytics cards */
+    .anl-card { background:rgba(250,245,236,.04); border:1px solid rgba(201,162,78,.15); padding:20px; margin-bottom:12px; }
+    .anl-title { font-family:'Cinzel',serif; font-size:.8rem; letter-spacing:.15em; color:rgba(201,162,78,.7); margin-bottom:12px; text-transform:uppercase; }
+    .anl-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid rgba(201,162,78,.07); font-family:'Jost',sans-serif; font-size:12px; color:rgba(250,245,236,.7); }
+    .anl-row:last-child { border-bottom:none; }
+    .anl-num { color:#c9a24e; font-family:'Cormorant Garamond',serif; font-size:1.1rem; }
+    .anl-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
+    @media(max-width:768px){ .anl-grid{ grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     LOGIN SCREEN
+══════════════════════════════════════════ -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div style="text-align:center;margin-bottom:40px">
+      <div style="font-size:32px;margin-bottom:12px">🌸</div>
+      <h1 style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;letter-spacing:.15em;color:#faf5ec">SissyTrends</h1>
+      <p style="font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.4em;text-transform:uppercase;color:rgba(201,162,78,.5);margin-top:6px">Admin Portal</p>
+      <p style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:.9rem;color:rgba(250,245,236,.25);margin-top:10px">Elegant Styles for Every You</p>
+    </div>
+
+    <label class="field-label">Username</label>
+    <input type="text" id="loginUser" class="login-input" placeholder="Enter username" autocomplete="username"/>
+
+    <label class="field-label">Password</label>
+    <input type="password" id="loginPass" class="login-input" placeholder="Enter password" autocomplete="current-password"
+           onkeydown="if(event.key==='Enter')doLogin()"/>
+
+    <div id="loginError" class="login-error">✦ Invalid credentials. Please try again.</div>
+
+    <button onclick="doLogin()" style="width:100%;text-align:center;padding:15px;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:3px;text-transform:uppercase;border:none;cursor:pointer;transition:background .3s;margin-top:4px"
+            onmouseover="this.style.background='#a07830'" onmouseout="this.style.background='#c9a24e'">
+      Sign In
+    </button>
+
+    <p style="text-align:center;margin-top:20px;font-family:'Jost',sans-serif;font-size:12px;color:rgba(250,245,236,.25)">
+      <a href="../index.html" style="color:rgba(201,162,78,.5);text-decoration:none">← Return to Boutique</a>
+    </p>
+
+    <!-- Security note -->
+    <p style="text-align:center;margin-top:28px;font-family:'Jost',sans-serif;font-size:10px;color:rgba(250,245,236,.15);letter-spacing:.05em">
+      🔒 Credentials stored securely in .env.local — never in source code
+    </p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     ADMIN PANEL
+══════════════════════════════════════════ -->
+<div id="adminPanel">
+  <div class="admin-header">
+    <div class="admin-header-inner">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:20px">🌸</span>
+        <div>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:1.1rem;letter-spacing:.12em;color:#faf5ec">SissyTrends</div>
+          <div style="font-family:'Jost',sans-serif;font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:rgba(201,162,78,.5)">Admin Portal</div>
+        </div>
+      </div>
+      <div class="admin-tabs">
+        <button class="admin-tab active" onclick="switchTab('dashboard')">Dashboard</button>
+        <button class="admin-tab" onclick="switchTab('products')">Products</button>
+        <button class="admin-tab" onclick="switchTab('add')">+ Add Product</button>
+        <button class="admin-tab" onclick="switchTab('analytics')">📊 Analytics</button>
+        <button class="admin-tab" onclick="switchTab('inquiries')">💬 Inquiries</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <a href="../index.html" style="font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:rgba(201,162,78,.6);text-decoration:none">View Site</a>
+        <button onclick="doLogout()" style="font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;text-transform:uppercase;padding:8px 16px;border:1px solid rgba(201,162,78,.25);color:rgba(201,162,78,.6);background:none;cursor:pointer;transition:all .2s"
+                onmouseover="this.style.borderColor='#c9a24e';this.style.color='#c9a24e'"
+                onmouseout="this.style.borderColor='rgba(201,162,78,.25)';this.style.color='rgba(201,162,78,.6)'">Logout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="admin-section active" id="tab-dashboard">
+    <div class="security-banner">
+      🔒 <span>Credentials secured · Loaded from <code>.env.local</code> · Not tracked by Git · See <code>.gitignore</code></span>
+    </div>
+    <h2 class="section-heading">Dashboard Overview</h2>
+    <div class="stats-grid" id="statsGrid"></div>
+    <h3 class="section-heading" style="font-size:1rem">Recent Products</h3>
+    <div class="table-wrap">
+      <table class="product-table" id="recentTable">
+        <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Price</th></tr></thead>
+        <tbody id="recentTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PRODUCTS -->
+  <div class="admin-section" id="tab-products">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:16px">
+      <h2 class="section-heading" style="margin-bottom:0;flex:1">All Products</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="filterTable('all')"       class="admin-tab active" id="ftab-all"       style="padding:8px 16px;font-size:9px">All</button>
+        <button onclick="filterTable('sarees')"    class="admin-tab"        id="ftab-sarees"    style="padding:8px 16px;font-size:9px">Sarees</button>
+        <button onclick="filterTable('jewellery')" class="admin-tab"        id="ftab-jewellery" style="padding:8px 16px;font-size:9px">Jewellery</button>
+        <button onclick="filterTable('decor')"     class="admin-tab"        id="ftab-decor"     style="padding:8px 16px;font-size:9px">Décor</button>
+        <button onclick="exportCSV()" style="padding:8px 16px;font-size:9px;letter-spacing:.15em;text-transform:uppercase;background:none;border:1px solid rgba(201,162,78,.4);color:#c9a24e;cursor:pointer;font-family:'Jost',sans-serif">&#8595; Export CSV</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="product-table">
+        <thead><tr><th>Image</th><th>Name</th><th>Category</th><th>Subcategory</th><th>Badge</th><th>Price</th><th>Actions</th></tr></thead>
+        <tbody id="productsTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ADD / EDIT PRODUCT -->
+  <div class="admin-section" id="tab-add">
+    <h2 class="section-heading" id="formHeading">Add New Product</h2>
+    <div class="admin-form">
+      <input type="hidden" id="editId"/>
+      <div class="field-row">
+        <div>
+          <label class="field-label">Product Name *</label>
+          <input type="text" id="fName" class="field-input" placeholder="e.g. Kanjivaram Silk Saree"/>
+        </div>
+        <div>
+          <label class="field-label">Category *</label>
+          <select id="fCategory" class="field-input">
+            <option value="">— Select Category —</option>
+            <option value="sarees">Sarees</option>
+            <option value="jewellery">Imitation Jewellery</option>
+            <option value="decor">Decorative Items</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div>
+          <label class="field-label">Subcategory *</label>
+          <select id="fSubcategory" class="field-input" onchange="updateFabricHint()">
+            <option value="">— Select Subcategory —</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Fabric / Type *</label>
+          <input type="text" id="fFabric" class="field-input" placeholder="e.g. Kanjivaram Silk"/>
+        </div>
+      </div>
+      <div class="field-row">
+        <div>
+          <label class="field-label">Price (₹) *</label>
+          <input type="number" id="fPrice" class="field-input" placeholder="e.g. 2499"/>
+        </div>
+        <div>
+          <label class="field-label">Badge Label *</label>
+          <input type="text" id="fBadge" class="field-input" placeholder="e.g. New Arrival, Bestseller"/>
+        </div>
+      </div>
+      <label class="field-label">Image 1 — Main Photo *</label>
+      <input type="text" id="fImg" class="field-input" placeholder="../Images/Saree1.jpeg" oninput="previewImg()"/>
+      <label class="field-label" style="margin-top:-8px">Image 2 (optional)</label>
+      <input type="text" id="fImg2" class="field-input" placeholder="../Images/Saree2.jpeg"/>
+      <label class="field-label" style="margin-top:-8px">Image 3 (optional)</label>
+      <input type="text" id="fImg3" class="field-input" placeholder="../Images/Saree3.jpeg"/>
+      <label class="field-label" style="margin-top:-8px">Image 4 (optional)</label>
+      <input type="text" id="fImg4" class="field-input" placeholder="../Images/Saree4.jpeg"/>
+      <div id="imgPreview" style="margin-bottom:20px;display:none">
+        <img id="previewImgEl" style="width:120px;height:90px;object-fit:cover;border:1px solid rgba(201,162,78,.3)"/>
+      </div>
+      <p style="font-family:'Jost',sans-serif;font-size:11px;color:rgba(201,162,78,.4);margin:-12px 0 18px">Use local path: <code>../Images/Saree1.jpeg</code></p>
+      <label class="field-label">Short Description</label>
+      <textarea id="fDesc" class="field-input" style="resize:vertical;min-height:80px" placeholder="An elegant description of the product…"></textarea>
+      <label class="field-label">Occasion</label>
+      <select id="fOccasion" class="field-input">
+        <option value="">— Select Occasion —</option>
+        <option value="bridal">Bridal</option>
+        <option value="wedding">Wedding Guest</option>
+        <option value="festive">Festive</option>
+        <option value="casual">Casual</option>
+        <option value="party">Party / Evening</option>
+      </select>
+
+      <!-- Product ID (read-only display) -->
+      <div style="background:rgba(201,162,78,.05);border:1px solid rgba(201,162,78,.15);padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div class="field-label" style="margin-bottom:2px">Product ID (auto-generated)</div>
+          <div id="fProductId" style="font-family:'Jost',sans-serif;font-size:13px;color:#c9a24e;letter-spacing:.1em">Will be generated on save</div>
+        </div>
+        <div style="font-size:18px;opacity:.4">#</div>
+      </div>
+
+      <!-- Availability toggle -->
+      <div class="toggle-wrap">
+        <span class="toggle-label">Availability</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="fAvailable" checked onchange="updateAvailabilityLabel()">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-status" id="availabilityLabel" style="color:#2ea043">Available</span>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px">
+        <button onclick="saveProduct()" style="flex:1;text-align:center;padding:14px;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;border:none;cursor:pointer;transition:background .3s"
+                onmouseover="this.style.background='#a07830';this.style.color='#faf5ec'"
+                onmouseout="this.style.background='#c9a24e';this.style.color='#1a0a06'"
+                id="saveBtn">Add Product</button>
+        <button onclick="cancelEdit()" id="cancelBtn" style="display:none;flex:1;text-align:center;padding:14px;background:none;border:1px solid rgba(201,162,78,.3);color:rgba(201,162,78,.7);font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;cursor:pointer">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="adminToast">Saved ✦</div>
+
+<!-- env-config.js sets window.__ENV with admin credentials -->
+<!-- This file is gitignored — create it from env-config.example.js -->
+<script src="env-config.js" onerror="window.__ENV_MISSING=true"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════
+   ADMIN PANEL — ALL CRUD NOW GOES THROUGH api.py → sissytrends.db
+   localStorage is NO LONGER used for products.
+═══════════════════════════════════════════════════════════ */
+
+const API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://localhost:5000/api'
+  : '/api';
+
+// Clear any stale localStorage product cache from the old system
+localStorage.removeItem('sissytrends_products_v3');
+localStorage.removeItem('sissytrends_products');
+localStorage.removeItem('sissytrends_products_v2');
+
+/* ── In-memory product cache (populated from DB on load) ── */
+let _products = [];
+
+async function loadProducts() {
+  try {
+    const r = await fetch(`${API}/products`);
+    _products = await r.json();
+  } catch (e) {
+    showAdminToast('⚠ Cannot reach api.py — is start.bat running?', true);
+    _products = [];
+  }
+  return _products;
+}
+function getProducts() { return _products; }
+
+/* ── Auth ── */
+function getEnvCreds() {
+  const env = window.__ENV || {};
+  return { user: env.ADMIN_USERNAME || '', pass: env.ADMIN_PASSWORD || '' };
+}
+
+async function doLogin() {
+  let creds = getEnvCreds();
+  if (!creds.user || !creds.pass) {
+    try {
+      const r = await fetch('/api/env');
+      const data = await r.json();
+      creds = { user: data.ADMIN_USERNAME || '', pass: data.ADMIN_PASSWORD || '' };
+    } catch {}
+  }
+  if (!creds.user || !creds.pass) {
+    document.getElementById('loginError').textContent =
+      '⚠ Set ADMIN_USERNAME and ADMIN_PASSWORD in Render environment variables.';
+    document.getElementById('loginError').style.display = 'block';
+    return;
+  }
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  if (u === creds.user && p === creds.pass) {
+    sessionStorage.setItem('st_admin', '1');
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('adminPanel').style.display  = 'block';
+    loadProducts().then(renderDashboard);
+  } else {
+    document.getElementById('loginError').textContent = '✦ Invalid credentials. Please try again.';
+    document.getElementById('loginError').style.display = 'block';
+    document.getElementById('loginPass').value = '';
+  }
+}
+
+function doLogout() { sessionStorage.removeItem('st_admin'); location.reload(); }
+
+// Auto-restore session
+if (sessionStorage.getItem('st_admin') === '1') {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('adminPanel').style.display  = 'block';
+  loadProducts().then(renderDashboard);
+}
+
+/* ── Tabs ── */
+function switchTab(name) {
+  document.querySelectorAll('.admin-tab').forEach(t => {
+    t.classList[t.getAttribute('onclick') === `switchTab('${name}')` ? 'add' : 'remove']('active');
+  });
+  document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  if (name === 'dashboard') loadProducts().then(renderDashboard);
+  if (name === 'products')  loadProducts().then(() => renderProductsTable('all'));
+  if (name === 'analytics') loadAndRenderAnalytics();
+  if (name === 'inquiries') loadAndRenderInquiries();
+}
+
+/* ── Dashboard ── */
+function renderDashboard() {
+  const products = getProducts();
+  const stats = [
+    { num: products.length,                                         label: 'Total Products' },
+    { num: products.filter(p => p.category === 'sarees').length,    label: 'Sarees'    },
+    { num: products.filter(p => p.category === 'jewellery').length, label: 'Jewellery' },
+    { num: products.filter(p => p.category === 'decor').length,     label: 'Décor'     },
+  ];
+  document.getElementById('statsGrid').innerHTML = stats.map(s =>
+    `<div class="stat-card"><div class="stat-num">${s.num}</div><div class="stat-label">${s.label}</div></div>`
+  ).join('');
+  document.getElementById('recentTableBody').innerHTML = [...products].slice(-6).reverse().map(p => `
+    <tr>
+      <td><img src="${resolveImg(p.img)}" alt="${p.name}" onerror="this.parentElement.style.background='linear-gradient(135deg,#2D2520,#8B7355)';this.style.display='none'"/></td>
+        <td style="font-weight:500;color:#faf5ec">${p.name}</td>
+      <td><span class="badge-pill">${p.category}</span></td>
+      <td style="color:#c9a24e">₹${p.price.toLocaleString()}</td>
+    </tr>`).join('');
+}
+
+/* ── Products table ── */
+let currentFilter = 'all';
+function filterTable(f) {
+  currentFilter = f;
+  ['all','sarees','jewellery','decor'].forEach(k =>
+    document.getElementById(`ftab-${k}`)?.classList[k === f ? 'add' : 'remove']('active')
+  );
+  renderProductsTable(f);
+}
+
+function renderProductsTable(filter) {
+  let products = getProducts();
+  if (filter !== 'all') products = products.filter(p => p.category === filter);
+  document.getElementById('productsTableBody').innerHTML = products.length === 0
+    ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No products found.</td></tr>`
+    : products.map(p => `
+      <tr>
+        <td><img src="${resolveImg(p.img)}" alt="${p.name}" onerror="this.parentElement.style.background='linear-gradient(135deg,#2D2520,#8B7355)';this.style.display='none'"/></td>
+        <td style="color:#faf5ec;font-weight:500;max-width:160px">${p.name}</td>
+        <td><span class="badge-pill">${p.category}</span></td>
+        <td style="color:rgba(201,162,78,.6);font-size:12px">${p.subcategory || '—'}</td>
+        <td style="color:rgba(250,245,236,.5)">${p.badge}</td>
+        <td style="color:#c9a24e;font-weight:600">₹${p.price.toLocaleString()}</td>
+        <td>
+          <button class="btn-edit"   onclick="editProduct(${p.id})">Edit</button>
+          <button class="btn-delete" onclick="deleteProduct(${p.id})">Delete</button>
+        </td>
+      </tr>`).join('');
+}
+
+/* ── Save / Edit product — NOW CALLS THE API ── */
+async function saveProduct() {
+  const name        = document.getElementById('fName').value.trim();
+  const category    = document.getElementById('fCategory').value;
+  const subcategory = document.getElementById('fSubcategory').value;
+  const fabric      = document.getElementById('fFabric').value.trim();
+  const price       = parseInt(document.getElementById('fPrice').value);
+  const badge       = document.getElementById('fBadge').value.trim();
+  const img         = document.getElementById('fImg').value.trim();
+  const img2        = (document.getElementById('fImg2')?.value || '').trim() || null;
+  const img3        = (document.getElementById('fImg3')?.value || '').trim() || null;
+  const img4        = (document.getElementById('fImg4')?.value || '').trim() || null;
+  const desc        = document.getElementById('fDesc').value.trim();
+  const occasion    = document.getElementById('fOccasion').value;
+  const available   = document.getElementById('fAvailable') ? document.getElementById('fAvailable').checked : true;
+  const editId      = document.getElementById('editId').value;
+
+  if (!name || !category || !subcategory || !price || !badge || !img) {
+    showAdminToast('Please fill all required fields ✦', true); return;
+  }
+
+  const payload = { name, category, subcategory, fabric, price, badge, img, img2, img3, img4, desc, occasion, available };
+
+  try {
+    let resp;
+    if (editId) {
+      resp = await fetch(`${API}/products/${editId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      showAdminToast('Product updated in DB ✦');
+    } else {
+      resp = await fetch(`${API}/products`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const created = await resp.json();
+      showAdminToast(`Product added · ${created.productId} ✦`);
+    }
+    await loadProducts();
+    resetForm();
+    switchTab('products');
+    renderProductsTable('all');
+  } catch (err) {
+    showAdminToast('⚠ Save failed: ' + err.message, true);
+  }
+}
+
+function editProduct(id) {
+  const p = getProducts().find(p => p.id == id);
+  if (!p) return;
+  document.getElementById('editId').value       = p.id;
+  document.getElementById('fName').value        = p.name;
+  document.getElementById('fCategory').value    = p.category;
+  populateSubcategories(p.category);
+  document.getElementById('fSubcategory').value = p.subcategory || '';
+  document.getElementById('fFabric').value      = p.fabric || p.type || '';
+  document.getElementById('fPrice').value       = p.price;
+  document.getElementById('fBadge').value       = p.badge;
+  document.getElementById('fImg').value         = p.img;
+  const i2 = document.getElementById('fImg2'); if (i2) i2.value = p.img2 || '';
+  const i3 = document.getElementById('fImg3'); if (i3) i3.value = p.img3 || '';
+  const i4 = document.getElementById('fImg4'); if (i4) i4.value = p.img4 || '';
+  document.getElementById('fDesc').value        = p.desc || '';
+  document.getElementById('fOccasion').value    = p.occasion || '';
+  const avEl = document.getElementById('fAvailable');
+  if (avEl) { avEl.checked = p.available !== false; updateAvailabilityLabel(); }
+  const pidEl = document.getElementById('fProductId');
+  if (pidEl) pidEl.textContent = p.productId || 'Will be generated on save';
+  document.getElementById('formHeading').textContent = 'Edit Product';
+  document.getElementById('saveBtn').textContent     = 'Update Product';
+  document.getElementById('cancelBtn').style.display = 'block';
+  updateFabricHint();
+  previewImg();
+  switchTab('add');
+}
+
+async function deleteProduct(id) {
+  if (!confirm('Remove this product from the database?')) return;
+  try {
+    const resp = await fetch(`${API}/products/${id}`, { method: 'DELETE' });
+    if (!resp.ok) throw new Error(await resp.text());
+    await loadProducts();
+    renderProductsTable(currentFilter);
+    renderDashboard();
+    showAdminToast('Product deleted from DB ✦');
+  } catch (err) {
+    showAdminToast('⚠ Delete failed: ' + err.message, true);
+  }
+}
+
+function cancelEdit() { resetForm(); switchTab('products'); renderProductsTable('all'); }
+function resetForm() {
+  ['fName','fCategory','fSubcategory','fFabric','fPrice','fBadge',
+   'fImg','fImg2','fImg3','fImg4','fDesc','editId','fOccasion'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  document.getElementById('fSubcategory').innerHTML = '<option value="">— Select Subcategory —</option>';
+  const pidEl = document.getElementById('fProductId');
+  if (pidEl) pidEl.textContent = 'Will be generated on save';
+  const avEl = document.getElementById('fAvailable');
+  if (avEl) { avEl.checked = true; updateAvailabilityLabel(); }
+  document.getElementById('formHeading').textContent = 'Add New Product';
+  document.getElementById('saveBtn').textContent     = 'Add Product';
+  document.getElementById('cancelBtn').style.display = 'none';
+  document.getElementById('imgPreview').style.display = 'none';
+}
+
+// Resolve any stored image path to one that works from the current page
+function resolveImg(path) {
+  if (!path) return '';
+  // Already an absolute URL or data URI — use as-is
+  if (path.startsWith('http') || path.startsWith('data:')) return path;
+  // Already a root-relative path — use as-is
+  if (path.startsWith('/')) return path;
+  // Strip any leading ../ or ./ segments, then make root-relative
+  const clean = path.replace(/^(\.\.\/|\.\/)*/g, '');
+  return '/' + clean;
+}
+
+function previewImg() {
+  const url = resolveImg(document.getElementById('fImg').value.trim());
+  const preview = document.getElementById('imgPreview');
+  const img = document.getElementById('previewImgEl');
+  if (url) { img.src = url; preview.style.display = 'block'; }
+  else { preview.style.display = 'none'; }
+}
+
+function showAdminToast(msg, isError) {
+  const t = document.getElementById('adminToast');
+  t.textContent = msg;
+  t.style.background = isError ? 'linear-gradient(135deg,#8c2020,#5c1010)' : 'linear-gradient(135deg,#c9a24e,#a07830)';
+  t.style.color = isError ? '#faf5ec' : '#1a0a06';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+/* ── Analytics tab ── */
+async function loadAndRenderAnalytics() {
+  const tabEl = document.getElementById('tab-analytics');
+  if (!tabEl) return;
+  tabEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(250,245,236,.4)">Loading…</div>';
+  try {
+    const r = await fetch(`${API}/analytics`);
+    const data = await r.json();
+    const events = data.events || [];
+    const recent = data.recentlyViewed || [];
+    const inqs   = data.inquiries || [];
+    tabEl.innerHTML = `
+      <h2 class="section-heading">Analytics</h2>
+      <div class="anl-grid">
+        <div class="anl-card">
+          <div class="anl-title">Top Events</div>
+          ${events.slice(0,8).map(e => `<div class="anl-row"><span>${e.event_type} · ${e.product_id||'—'}</span><span class="anl-num">${e.count}</span></div>`).join('') || '<div style="color:rgba(250,245,236,.3);font-size:12px">No events yet</div>'}
+        </div>
+        <div class="anl-card">
+          <div class="anl-title">Recently Viewed</div>
+          ${recent.map(p => `<div class="anl-row"><span>${p.name||'—'}</span><span style="font-size:11px;color:rgba(201,162,78,.5)">${(p.viewed_at||'').substring(0,10)}</span></div>`).join('') || '<div style="color:rgba(250,245,236,.3);font-size:12px">No views yet</div>'}
+        </div>
+      </div>
+      <div class="anl-card">
+        <div class="anl-title">Recent Inquiries (${inqs.length})</div>
+        ${inqs.slice(0,10).map(i => `<div class="anl-row"><span>${i.product_name||'—'} · ${i.category||'—'}</span><span style="font-size:11px;color:rgba(201,162,78,.5)">${(i.created_at||'').substring(0,10)}</span></div>`).join('') || '<div style="color:rgba(250,245,236,.3);font-size:12px">No inquiries yet</div>'}
+      </div>`;
+  } catch { tabEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(220,80,80,.6)">Could not load analytics — is the server running?</div>'; }
+}
+
+/* ── Inquiries tab ── */
+async function loadAndRenderInquiries() {
+  const tabEl = document.getElementById('tab-inquiries');
+  if (!tabEl) return;
+  tabEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(250,245,236,.4)">Loading…</div>';
+  try {
+    const r    = await fetch(`${API}/inquiries`);
+    const inqs = await r.json();
+    tabEl.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:16px">
+        <h2 class="section-heading" style="margin-bottom:0">Inquiries (${inqs.length})</h2>
+        <button onclick="clearInquiries()" style="padding:8px 16px;border:1px solid rgba(220,80,80,.4);color:rgba(220,80,80,.7);background:none;font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer">Clear All</button>
+      </div>
+      <div class="table-wrap">
+        <table class="product-table">
+          <thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Date</th></tr></thead>
+          <tbody>${inqs.map(i => `<tr>
+            <td style="color:#faf5ec">${i.product_name||'—'}<br/><span style="font-size:10px;color:rgba(201,162,78,.4)">#${i.product_id||'—'}</span></td>
+            <td><span class="badge-pill">${i.category||'—'}</span></td>
+            <td style="color:#c9a24e">₹${(i.price||0).toLocaleString()}</td>
+            <td style="font-size:11px;color:rgba(250,245,236,.4)">${(i.created_at||'').substring(0,16).replace('T',' ')}</td>
+          </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:40px;color:rgba(250,245,236,.3)">No inquiries yet.</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+  } catch { tabEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(220,80,80,.6)">Could not load inquiries.</div>'; }
+}
+
+async function clearInquiries() {
+  if (!confirm('Clear all inquiry records?')) return;
+  await fetch(`${API}/inquiries`, { method: 'DELETE' });
+  loadAndRenderInquiries();
+  showAdminToast('Inquiries cleared ✦');
+}
+
+/* ── Subcategory dropdowns ── */
+const SUBCAT_OPTIONS = {
+  sarees:    [
+    { key:'soft-silk',             label:'Soft Silk' },
+    { key:'Maheswari Silk Cotton', label:'Maheswari Silk Cotton' },
+    { key:'Fancy Silk',            label:'Fancy Silk' },
+    { key:'Cool Cotton',           label:'Cool Cotton' },
+    { key:'cotton-linen',          label:'Cotton & Linen' },
+  ],
+  jewellery: [
+    { key:'necklace-sets', label:'Necklace Sets' },
+    { key:'earrings',      label:'Earrings' },
+    { key:'full-sets',     label:'Full Sets' },
+    { key:'bridal',        label:'Bridal Collection' },
+  ],
+  decor: [
+    { key:'diyas',   label:'Diyas & Lamps' },
+    { key:'gifting', label:'Gifting' },
+  ],
+};
+const FABRIC_HINTS = {
+  'soft-silk':'Soft Silk, Pure Silk',
+  'Maheswari Silk Cotton':'Maheswari Silk Cotton',
+  'Fancy Silk':'Fancy Silk',
+  'Cool Cotton':'Cool Cotton',
+  'cotton-linen':'Pure Cotton, Pure Linen',
+  'necklace-sets':'Necklace Set','earrings':'Earrings','full-sets':'Full Set',
+  'bridal':'Bridal Set','diyas':'Diya','gifting':'Gift Set',
+};
+function populateSubcategories(cat) {
+  const sel = document.getElementById('fSubcategory');
+  sel.innerHTML = '<option value="">— Select Subcategory —</option>' +
+    (SUBCAT_OPTIONS[cat] || []).map(o => `<option value="${o.key}">${o.label}</option>`).join('');
+}
+function updateFabricHint() {
+  const sub = document.getElementById('fSubcategory').value;
+  document.getElementById('fFabric').placeholder = FABRIC_HINTS[sub] || 'e.g. Soft Silk';
+}
+document.getElementById('fCategory').addEventListener('change', function () {
+  populateSubcategories(this.value);
+  document.getElementById('fSubcategory').value = '';
+  document.getElementById('fFabric').value = '';
+  updateFabricHint();
+});
+
+function updateAvailabilityLabel() {
+  const avEl  = document.getElementById('fAvailable');
+  const label = document.getElementById('availabilityLabel');
+  if (!avEl || !label) return;
+  label.textContent = avEl.checked ? 'Available' : 'Not Available';
+  label.style.color = avEl.checked ? '#2ea043' : 'rgba(220,80,80,.8)';
+}
+
+function exportCSV() {
+  const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000' : '';
+  const a = document.createElement('a');
+  a.href = base + '/api/export/csv';
+  a.download = 'products_CSVBasic.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showAdminToast('CSV downloaded ✦ Replace products_CSVBasic.csv in project and push to GitHub');
+}
+
+function filterProductsBySearch(query) {
+  const q = (query || '').toLowerCase().trim();
+  if (!q) { renderProductsTable(currentFilter); return; }
+  let products = getProducts();
+  if (currentFilter !== 'all') products = products.filter(p => p.category === currentFilter);
+  const filtered = products.filter(p =>
+    p.name.toLowerCase().includes(q) || (p.productId || '').toLowerCase().includes(q)
+  );
+  document.getElementById('productsTableBody').innerHTML = filtered.length === 0
+    ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No products match "${query}"</td></tr>`
+    : filtered.map(p => `
+      <tr>
+        <td><img src="${resolveImg(p.img)}" alt="${p.name}" onerror="this.style.display='none'"/></td>
+        <td style="color:#faf5ec;font-weight:500;max-width:140px"><div>${p.name}</div><div style="font-size:10px;color:rgba(201,162,78,.5);margin-top:2px">${p.productId||'—'}</div></td>
+        <td><span class="badge-pill">${p.category}</span></td>
+        <td style="color:rgba(201,162,78,.6);font-size:12px">${p.subcategory||'—'}</td>
+        <td style="color:rgba(250,245,236,.5)">${p.badge}</td>
+        <td style="color:#c9a24e;font-weight:600">₹${p.price.toLocaleString()}</td>
+        <td style="color:${p.available===false?'rgba(220,80,80,.8)':'rgba(46,160,67,.9)'};font-size:11px">${p.available===false?'Out of Stock':'Available'}</td>
+        <td>
+          <button class="btn-edit"   onclick="editProduct(${p.id})">Edit</button>
+          <button class="btn-delete" onclick="deleteProduct(${p.id})">Delete</button>
+        </td>
+      </tr>`).join('');
+}
+</script>
+</body>
+</html>
