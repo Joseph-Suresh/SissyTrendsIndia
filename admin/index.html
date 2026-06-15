@@ -332,11 +332,18 @@ function getEnvCreds() {
   return { user: env.ADMIN_USERNAME || '', pass: env.ADMIN_PASSWORD || '' };
 }
 
-function doLogin() {
-  const creds = getEnvCreds();
+async function doLogin() {
+  let creds = getEnvCreds();
+  if (!creds.user || !creds.pass) {
+    try {
+      const r = await fetch('/api/env');
+      const data = await r.json();
+      creds = { user: data.ADMIN_USERNAME || '', pass: data.ADMIN_PASSWORD || '' };
+    } catch {}
+  }
   if (!creds.user || !creds.pass) {
     document.getElementById('loginError').textContent =
-      '⚠ env-config.js not found. Create it from env-config.example.js';
+      '⚠ Set ADMIN_USERNAME and ADMIN_PASSWORD in Render environment variables.';
     document.getElementById('loginError').style.display = 'block';
     return;
   }

@@ -101,6 +101,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/health':
             send_json(self, {'status':'ok','db':DB_PATH})
 
+        elif path == '/api/env':
+            # Serve admin credentials from environment variables (Render)
+            send_json(self, {
+                'ADMIN_USERNAME': os.environ.get('ADMIN_USERNAME', ''),
+                'ADMIN_PASSWORD': os.environ.get('ADMIN_PASSWORD', ''),
+            })
+
         elif path == '/api/products':
             qs  = parse_qs(p.query)
             cat = qs.get('category',   [None])[0]
