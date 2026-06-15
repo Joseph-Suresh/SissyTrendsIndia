@@ -5,8 +5,15 @@ Run once (or after deleting the DB) to create tables and seed products from CSV.
 import sqlite3, os, csv
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH  = os.path.join(BASE_DIR, 'data', 'sissytrends.db')
 CSV_PATH = os.path.join(BASE_DIR, 'products_CSVBasic.csv')
+
+# On Render (no persistent disk): store DB in app directory
+# Locally: store in data/ subfolder
+_is_local = os.path.exists(os.path.join(BASE_DIR, '.localdev'))
+if _is_local:
+    DB_PATH = os.path.join(BASE_DIR, 'data', 'sissytrends.db')
+else:
+    DB_PATH = os.path.join(BASE_DIR, 'sissytrends.db')
 
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)

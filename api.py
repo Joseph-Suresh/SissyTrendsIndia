@@ -17,7 +17,10 @@ from urllib.parse import urlparse, parse_qs
 
 # ── Paths ────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH  = os.path.join(BASE_DIR, 'data', 'sissytrends.db')
+# On Render (no persistent disk): store DB in app directory
+# Locally: store in data/ subfolder
+_is_local = os.path.exists(os.path.join(BASE_DIR, '.localdev'))
+DB_PATH = os.path.join(BASE_DIR, 'data', 'sissytrends.db') if _is_local else os.path.join(BASE_DIR, 'sissytrends.db')
 PORT     = int(os.environ.get('PORT', 5000))  # Render sets PORT env var
 HOST     = '0.0.0.0'  # bind to all interfaces (required for Render/cloud hosting)
 
@@ -107,6 +110,28 @@ class Handler(BaseHTTPRequestHandler):
                 'ADMIN_USERNAME': os.environ.get('ADMIN_USERNAME', ''),
                 'ADMIN_PASSWORD': os.environ.get('ADMIN_PASSWORD', ''),
             })
+
+        elif path == '/api/export/csv':
+            with get_db() as db:
+                rows = db.execute('SELECT * FROM products ORDER BY category, productId').fetchall()
+            import csv, io
+            out = io.StringIO()
+            fields = ['id','productId','available','name','category','subcategory',
+                      'fabric','price','badge','occasion','img','img2','img3','img4',
+                      'desc','created_at','updated_at']
+            w = csv.DictWriter(out, fieldnames=fields, delimiter=';', extrasaction='ignore')
+            w.writeheader()
+            for row in rows:
+                w.writerow(dict(row))
+            data = out.getvalue().encode('utf-8-sig')
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/csv; charset=utf-8')
+            self.send_header('Content-Disposition', 'attachment; filename="products_CSVBasic.csv"')
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(data)
+            return
 
         elif path == '/api/products':
             qs  = parse_qs(p.query)

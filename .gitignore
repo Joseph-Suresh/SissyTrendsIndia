@@ -1,5 +1,8 @@
 # ── SissyTrends .gitignore ──────────────────────────────────────
 
+# Local dev marker — tells api.py to use local DB, not Render disk
+.localdev
+
 # SQLite DB — excluded from git (regenerated from init_db.py + CSV on first run)
 data/sissytrends.db
 data/sissytrends.db-shm
