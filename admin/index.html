@@ -302,9 +302,9 @@
    localStorage is NO LONGER used for products.
 ═══════════════════════════════════════════════════════════ */
 
-const API = window.location.port === '5000'
-  ? '/api'
-  : 'http://localhost:5000/api';
+const API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://localhost:5000/api'
+  : '/api';
 
 // Clear any stale localStorage product cache from the old system
 localStorage.removeItem('sissytrends_products_v3');
