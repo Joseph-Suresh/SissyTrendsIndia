@@ -1,0 +1,23 @@
+# ── SissyTrends .gitignore ──────────────────────────────────────
+
+# Admin credentials — NEVER commit
+admin/env-config.js
+
+# SQLite DB — excluded from git (regenerated from init_db.py + CSV on first run)
+data/sissytrends.db
+data/sissytrends.db-shm
+data/sissytrends.db-wal
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+*.log
+
+# One-off patch scripts
+patch_mainjs.py
