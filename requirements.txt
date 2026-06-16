@@ -1,3 +1,0 @@
-# SissyTrends — Python dependencies
-# All stdlib only — no pip installs needed
-# (sqlite3, http.server, json, os, csv, urllib are all built into Python 3)
