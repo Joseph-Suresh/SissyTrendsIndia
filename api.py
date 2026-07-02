@@ -273,7 +273,25 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path.rstrip('/')
         body = read_body(self)
 
-        if path == '/api/products':
+        if path.startswith('/api/upload-image'):
+            qs       = parse_qs(urlparse(self.path).query)
+            key      = qs.get('key', [None])[0]
+            if key != os.environ.get('DB_DOWNLOAD_KEY', 'sissy-db-2025'):
+                self.send_response(403); self.end_headers(); self.wfile.write(b'Forbidden'); return
+            filename = qs.get('file', [None])[0]
+            folder   = qs.get('folder', ['SareeImages'])[0]
+            if not filename or '..' in filename:
+                send_json(self, {'error': 'Invalid filename'}, 400); return
+            dest_dir = os.path.join(BASE_DIR, 'Images', folder)
+            os.makedirs(dest_dir, exist_ok=True)
+            dest   = os.path.join(dest_dir, filename)
+            length = int(self.headers.get('Content-Length', 0))
+            data   = self.rfile.read(length)
+            with open(dest, 'wb') as f: f.write(data)
+            send_json(self, {'ok': True, 'path': f'/Images/{folder}/{filename}', 'size': len(data)})
+            return
+
+        elif path == '/api/products':
             with get_db() as db:
                 pid_str = next_product_id(db, body.get('category',''))
                 cur = db.execute("""
