@@ -271,7 +271,6 @@ class Handler(BaseHTTPRequestHandler):
     # ── POST ──────────────────────────────────────────────────────
     def do_POST(self):
         path = urlparse(self.path).path.rstrip('/')
-        body = read_body(self)
 
         if path.startswith('/api/upload-image'):
             qs       = parse_qs(urlparse(self.path).query)
@@ -291,7 +290,9 @@ class Handler(BaseHTTPRequestHandler):
             send_json(self, {'ok': True, 'path': f'/Images/{folder}/{filename}', 'size': len(data)})
             return
 
-        elif path == '/api/products':
+        body = read_body(self)
+
+        if path == '/api/products':
             with get_db() as db:
                 pid_str = next_product_id(db, body.get('category',''))
                 cur = db.execute("""
