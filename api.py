@@ -210,6 +210,24 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
+        elif path == '/api/subcategories':
+            qs  = parse_qs(urlparse(self.path).query)
+            cat = qs.get('category', [None])[0]
+            with get_db() as db:
+                if cat:
+                    rows = db.execute(
+                        "SELECT DISTINCT subcategory FROM products "
+                        "WHERE category=? AND subcategory IS NOT NULL AND subcategory != '' "
+                        "ORDER BY subcategory", (cat,)
+                    ).fetchall()
+                else:
+                    rows = db.execute(
+                        "SELECT DISTINCT category, subcategory FROM products "
+                        "WHERE subcategory IS NOT NULL AND subcategory != '' "
+                        "ORDER BY category, subcategory"
+                    ).fetchall()
+            send_json(self, [r[0] for r in rows])
+
         elif path == '/api/products':
             qs  = parse_qs(p.query)
             cat = qs.get('category',   [None])[0]

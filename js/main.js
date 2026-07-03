@@ -567,13 +567,30 @@ const BADGE_ICON_MAP = {
 };
 function badgeIcon(label) { return BADGE_ICON_MAP[(label||'').toLowerCase().trim()] || '✦'; }
 
+const SUBCAT_ICONS = {
+  'soft-silk':'🦵','Soft Silk':'🦵',
+  'Maheswari Silk Cotton':'🪡','Silk Cotton':'🪡',
+  'Bamboo Silk cotton':'🎋','Bamboo Silk Cotton':'🎋',
+  'Fancy Silk':'✨','Chettinad Cotton':'🌿',
+  'Mul-mul cotton':'🌿','Pochampally Ikat':'🧣',
+  'Cool Cotton':'🌹','cotton-linen':'🌿',
+  'Cotton & Linen':'🌿','necklace-sets':'💎',
+  'Necklace Sets':'💎','earrings':'✨','Earrings':'✨',
+  'full-sets':'👑','Full Sets':'👑',
+  'bridal':'🌸','Bridal Collection':'🌸',
+  'diyas':'🪔','Diyas & Lamps':'🪔',
+  'gifting':'🎁','Gifting':'🎁',
+};
 const SUBCATEGORIES = {
   sarees: [
-    { key:'soft-silk',    label:'Soft Silk',      icon:'🥻' },
+    { key:'soft-silk',             label:'Soft Silk',             icon:'🦵' },
     { key:'Maheswari Silk Cotton', label:'Maheswari Silk Cotton', icon:'🪡' },
     { key:'Fancy Silk',            label:'Fancy Silk',            icon:'✨' },
-    { key:'Cool Cotton',           label:'Cool Cotton',            icon:'🌹' },
-    { key:'cotton-linen', label:'Cotton & Linen', icon:'🌿' },
+    { key:'Chettinad Cotton',      label:'Chettinad Cotton',      icon:'🌿' },
+    { key:'Mul-mul cotton',        label:'Mul-Mul Cotton',        icon:'🌿' },
+    { key:'Bamboo Silk cotton',    label:'Bamboo Silk Cotton',    icon:'🎋' },
+    { key:'Silk Cotton',           label:'Silk Cotton',           icon:'🪡' },
+    { key:'Pochampally Ikat',      label:'Pochampally Ikat',      icon:'🧣' },
   ],
   jewellery: [
     { key:'necklace-sets', label:'Necklace Sets',     icon:'💎' },
@@ -586,26 +603,21 @@ const SUBCATEGORIES = {
     { key:'gifting', label:'Gifting',       icon:'🎁' },
   ],
 };
-
-function getSubcategories(cat) {
+const _subcatCache = {};
+async function getSubcategoriesAsync(cat) {
+  if (_subcatCache[cat]) return _subcatCache[cat];
   try {
-    const products = getDefaultProducts();
-    const catProds = products.filter(p => p.category === cat);
-    const base = (SUBCATEGORIES[cat]||[]).filter(s => catProds.some(p => p.subcategory === s.key));
-    const usedKeys = new Set(base.map(s => s.key));
-    const badgeSeen = new Set();
-    const badgeEntries = [];
-    catProds.forEach(p => {
-      if (!p.badge) return;
-      const key = p.badge.toLowerCase().replace(/[^a-z0-9]+/g,'-');
-      if (!usedKeys.has(key) && !badgeSeen.has(key)) {
-        badgeSeen.add(key);
-        badgeEntries.push({ key, label:p.badge, icon:badgeIcon(p.badge) });
-      }
-    });
-    return [...base, ...badgeEntries];
-  } catch { return SUBCATEGORIES[cat]||[]; }
+    const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://localhost:5000' : '';
+    const r = await fetch(`${base}/api/subcategories?category=${cat}`);
+    if (!r.ok) throw new Error('API error');
+    const keys = await r.json();
+    const result = keys.map(key => ({ key, label:key, icon: SUBCAT_ICONS[key] || '💠' }));
+    _subcatCache[cat] = result;
+    return result;
+  } catch { return SUBCATEGORIES[cat] || []; }
 }
+function getSubcategories(cat) { return SUBCATEGORIES[cat] || []; }
 
 function getRawProducts() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY)) || getDefaultProducts(); }
@@ -696,24 +708,42 @@ function sendViaWhatsApp() {
 function injectNav(activePage, isRoot) {
   const b = isRoot ? '' : '../';
 
-  function megaCol(catKey, catLabel, catIcon, catHref) {
-    const subs = SUBCATEGORIES[catKey] || [];
+  function megaCol(catKey, catLabel, catIcon, catHref, subs) {
+    subs = subs || SUBCATEGORIES[catKey] || [];
     return `<div class="mega-col">
       <div class="mega-col-head"><a href="${catHref}">${catIcon} ${catLabel}</a></div>
-      ${subs.map(s=>`<a class="mega-sub-link" href="${b}pages/categories.html?cat=${catKey}&sub=${s.key}"><span class="sub-icon">${s.icon}</span>${s.label}</a>`).join('')}
-    </div>`;
-  }
-
-  function mobAccordion(catKey, catLabel, catIcon, catHref) {
-    const subs = SUBCATEGORIES[catKey] || [];
-    return `<div class="mob-acc-item">
-      <button class="mob-acc-toggle">${catIcon} ${catLabel}<span class="mob-acc-arrow">▾</span></button>
-      <div class="mob-acc-body">
-        <a href="${catHref}" data-close>View All ${catLabel}</a>
-        ${subs.map(s=>`<a href="${b}pages/categories.html?cat=${catKey}&sub=${s.key}" data-close>${s.icon} ${s.label}</a>`).join('')}
+      <div id="mega-subs-${catKey}">
+        ${subs.map(s=>`<a class="mega-sub-link" href="${b}pages/categories.html?cat=${catKey}&sub=${encodeURIComponent(s.key)}"><span class="sub-icon">${s.icon}</span>${s.label}</a>`).join('')}
       </div>
     </div>`;
   }
+  function mobAccordion(catKey, catLabel, catIcon, catHref, subs) {
+    subs = subs || SUBCATEGORIES[catKey] || [];
+    return `<div class="mob-acc-item">
+      <button class="mob-acc-toggle">${catIcon} ${catLabel}<span class="mob-acc-arrow">▾</span></button>
+      <div class="mob-acc-body" id="mob-subs-${catKey}">
+        <a href="${catHref}" data-close>View All ${catLabel}</a>
+        ${subs.map(s=>`<a href="${b}pages/categories.html?cat=${catKey}&sub=${encodeURIComponent(s.key)}" data-close>${s.icon} ${s.label}</a>`).join('')}
+      </div>
+    </div>`;
+  }
+  (async () => {
+    for (const cat of ['sarees','jewellery','decor']) {
+      const subs = await getSubcategoriesAsync(cat);
+      if (!subs.length) continue;
+      const megaEl = document.getElementById(`mega-subs-${cat}`);
+      if (megaEl) megaEl.innerHTML = subs.map(s =>
+        `<a class="mega-sub-link" href="${b}pages/categories.html?cat=${cat}&sub=${encodeURIComponent(s.key)}"><span class="sub-icon">${s.icon}</span>${s.label}</a>`
+      ).join('');
+      const mobEl = document.getElementById(`mob-subs-${cat}`);
+      if (mobEl) {
+        const first = mobEl.querySelector('a')?.outerHTML || '';
+        mobEl.innerHTML = first + subs.map(s =>
+          `<a href="${b}pages/categories.html?cat=${cat}&sub=${encodeURIComponent(s.key)}" data-close>${s.icon} ${s.label}</a>`
+        ).join('');
+      }
+    }
+  })();
 
   const act = lbl => lbl === activePage ? 'active' : '';
 
