@@ -308,6 +308,90 @@ class Handler(BaseHTTPRequestHandler):
             send_json(self, {'ok': True, 'path': f'/Images/{folder}/{filename}', 'size': len(data)})
             return
 
+        elif path == '/api/upload-csv':
+            qs  = parse_qs(urlparse(self.path).query)
+            key = qs.get('key', [None])[0]
+            if key != os.environ.get('DB_DOWNLOAD_KEY', 'sissy-db-2025'):
+                self.send_response(403); self.end_headers(); self.wfile.write(b'Forbidden'); return
+            mode   = qs.get('mode', ['add'])[0]   # add | replace
+            length = int(self.headers.get('Content-Length', 0))
+            raw    = self.rfile.read(length)
+            import csv, io
+            try:
+                text   = raw.decode('utf-8-sig')
+            except:
+                text   = raw.decode('cp1252', errors='replace')
+            reader  = csv.DictReader(io.StringIO(text), delimiter=';')
+            rows    = list(reader)
+            if not rows:
+                send_json(self, {'error': 'Empty or invalid CSV'}, 400); return
+            inserted = updated = skipped = 0
+            with get_db() as db:
+                if mode == 'replace':
+                    db.execute('DELETE FROM products')
+                existing = {r[0] for r in db.execute('SELECT productId FROM products').fetchall()}
+                for row in rows:
+                    pid = row.get('productId','').strip()
+                    if not pid: continue
+                    if pid in existing:
+                        # Update existing product
+                        db.execute("""
+                            UPDATE products SET
+                              available=?, name=?, category=?, subcategory=?, fabric=?,
+                              price=?, badge=?, occasion=?, img=?, img2=?, img3=?, img4=?,
+                              desc=?, updated_at=CURRENT_TIMESTAMP
+                            WHERE productId=?""",
+                            (
+                                1 if str(row.get('available','1')).strip() in ('1','true','True') else 0,
+                                row.get('name','').strip(),
+                                row.get('category','').strip(),
+                                row.get('subcategory','').strip() or None,
+                                row.get('fabric','').strip() or None,
+                                int(row.get('price',0) or 0),
+                                row.get('badge','').strip() or None,
+                                row.get('occasion','').strip() or None,
+                                row.get('img','').strip() or None,
+                                row.get('img2','').strip() or None,
+                                row.get('img3','').strip() or None,
+                                row.get('img4','').strip() or None,
+                                row.get('desc','').strip() or None,
+                                pid
+                            )
+                        )
+                        updated += 1
+                    else:
+                        db.execute("""
+                            INSERT INTO products
+                              (productId,available,name,category,subcategory,fabric,
+                               price,badge,occasion,img,img2,img3,img4,desc)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            (
+                                pid,
+                                1 if str(row.get('available','1')).strip() in ('1','true','True') else 0,
+                                row.get('name','').strip(),
+                                row.get('category','').strip(),
+                                row.get('subcategory','').strip() or None,
+                                row.get('fabric','').strip() or None,
+                                int(row.get('price',0) or 0),
+                                row.get('badge','').strip() or None,
+                                row.get('occasion','').strip() or None,
+                                row.get('img','').strip() or None,
+                                row.get('img2','').strip() or None,
+                                row.get('img3','').strip() or None,
+                                row.get('img4','').strip() or None,
+                                row.get('desc','').strip() or None,
+                            )
+                        )
+                        inserted += 1
+                        existing.add(pid)
+                total = db.execute('SELECT COUNT(*) FROM products').fetchone()[0]
+            send_json(self, {
+                'ok': True, 'mode': mode,
+                'inserted': inserted, 'updated': updated,
+                'skipped': skipped, 'total_in_db': total
+            })
+            return
+
         body = read_body(self)
 
         if path == '/api/products':
