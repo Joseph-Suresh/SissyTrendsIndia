@@ -7,6 +7,9 @@
 data/sissytrends.db
 data/sissytrends.db-shm
 data/sissytrends.db-wal
+sissytrends.db
+sissytrends.db-shm
+sissytrends.db-wal
 
 # Python
 __pycache__/
