@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableDelayedExpansion
 title SissyTrends Local Server
 cd /d "%~dp0"
 echo.
@@ -78,6 +79,17 @@ echo  Server: http://localhost:5000
 echo  Admin:  http://localhost:5000/admin/
 echo  Keep this window open. Ctrl+C to stop.
 echo.
+
+:: ── Load environment variables from .env.local ───────────────────────
+if exist ".env.local" (
+    for /f "usebackq tokens=1,* delims==" %%A in (".env.local") do (
+        set line=%%A
+        if not "!line:~0,1!"=="#" if not "%%A"=="" if not "%%B"=="" (
+            set %%A=%%B
+        )
+    )
+    echo  Loaded .env.local
+)
 
 :: ── Start server ─────────────────────────────────────────────
 "%PYTHON_CMD%" api.py

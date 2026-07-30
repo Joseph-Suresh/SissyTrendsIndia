@@ -419,46 +419,6 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
-        elif path == '/api/razorpay/webhook':
-            import hmac as _hmac, hashlib as _hl, json as _jwh
-            webhook_secret = os.environ.get('RAZORPAY_WEBHOOK_SECRET', '')
-            sig    = self.headers.get('X-Razorpay-Signature', '')
-            length = int(self.headers.get('Content-Length', 0))
-            raw    = self.rfile.read(length)
-            if webhook_secret:
-                expected = _hmac.new(webhook_secret.encode(), raw, _hl.sha256).hexdigest()
-                if expected != sig:
-                    self.send_response(400); self.end_headers()
-                    self.wfile.write(b'Invalid signature'); return
-            event      = _jwh.loads(raw.decode())
-            event_type = event.get('event', '')
-            if event_type == 'payment.captured':
-                pmt      = event['payload']['payment']['entity']
-                order_id = pmt.get('order_id', '')
-                pay_id   = pmt.get('id', '')
-                amount   = pmt.get('amount', 0)
-                notes    = pmt.get('notes', {})
-                prod     = notes.get('product_name', '') or pmt.get('description', '')
-                pid      = notes.get('product_id', 0)
-                with get_db() as db:
-                    db.execute(
-                        "CREATE TABLE IF NOT EXISTS orders ("
-                        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                        "order_id TEXT, payment_id TEXT UNIQUE, signature TEXT,"
-                        "amount INTEGER, product_id INTEGER,"
-                        "product_name TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)"
-                    )
-                    try:
-                        db.execute(
-                            "INSERT OR IGNORE INTO orders (order_id,payment_id,amount,product_id,product_name) VALUES (?,?,?,?,?)",
-                            (order_id, pay_id, amount, pid, prod)
-                        )
-                    except Exception: pass
-                wa  = os.environ.get('WHATSAPP_BUSINESS_NUMBER', '')
-                msg = f'*New Order!*%0AProduct: {prod}%0AAmount: Rs.{amount//100}%0APayment: {pay_id}'
-                if wa: print(f'ORDER: https://wa.me/{wa}?text={msg}')
-            self.send_response(200); self.end_headers(); self.wfile.write(b'ok'); return
-
         body = read_body(self)
 
         if path == '/api/razorpay/create-order':

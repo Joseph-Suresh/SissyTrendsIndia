@@ -150,7 +150,8 @@
         <button class="admin-tab" onclick="switchTab('products')">Products</button>
         <button class="admin-tab" onclick="switchTab('add')">+ Add Product</button>
         <button class="admin-tab" onclick="switchTab('analytics')">📊 Analytics</button>
-        <button class="admin-tab" onclick="switchTab('inquiries')">💬 Inquiries</button>
+        <button class="admin-tab" onclick="switchTab('inquiries')">&#128172; Inquiries</button>
+        <button class="admin-tab" onclick="switchTab('orders')">&#128179; Orders</button>
       </div>
       <div style="display:flex;align-items:center;gap:16px">
         <a href="../index.html" style="font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:rgba(201,162,78,.6);text-decoration:none">View Site</a>
@@ -247,6 +248,9 @@
       </table>
     </div>
   </div>
+
+  <!-- ORDERS -->
+  <div class="admin-section" id="tab-orders"></div>
 
   <!-- ADD / EDIT PRODUCT -->
   <div class="admin-section" id="tab-add">
@@ -433,6 +437,7 @@ function switchTab(name) {
   if (name === 'products')  loadProducts().then(() => renderProductsTable('all'));
   if (name === 'analytics') loadAndRenderAnalytics();
   if (name === 'inquiries') loadAndRenderInquiries();
+  if (name === 'orders')    loadAndRenderOrders();
 }
 
 /* ── Dashboard ── */
@@ -729,6 +734,42 @@ async function clearInquiries() {
   await fetch(`${API}/inquiries`, { method: 'DELETE' });
   loadAndRenderInquiries();
   showAdminToast('Inquiries cleared ✦');
+}
+
+async function loadAndRenderOrders() {
+  const tabEl = document.getElementById('tab-orders');
+  if (!tabEl) return;
+  tabEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(250,245,236,.4)">Loading…</div>';
+  try {
+    const r    = await fetch(`${API}/orders`);
+    const orders = await r.json();
+    const total  = orders.reduce((s, o) => s + (o.amount || 0), 0);
+    tabEl.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:16px">
+        <h2 class="section-heading" style="margin-bottom:0">Orders (${orders.length})</h2>
+        <div style="font-family:'Jost',sans-serif;font-size:11px;color:#c9a24e;letter-spacing:.1em">
+          Total Revenue: &#8377;${(total/100).toLocaleString()}
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="product-table">
+          <thead><tr><th>Order ID</th><th>Payment ID</th><th>Product</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+          <tbody>${orders.length === 0
+            ? '<tr><td colspan="6" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No orders yet.</td></tr>'
+            : orders.map(o => `<tr>
+              <td style="color:#c9a24e;font-size:11px">${o.order_id||'—'}</td>
+              <td style="color:rgba(250,245,236,.5);font-size:11px">${o.payment_id||'—'}</td>
+              <td style="color:#faf5ec">${o.product_name||'—'}</td>
+              <td style="color:#c9a24e;font-weight:600">&#8377;${((o.amount||0)/100).toLocaleString()}</td>
+              <td><span style="color:#2ea043;font-size:11px">&#10003; Paid</span></td>
+              <td style="font-size:11px;color:rgba(250,245,236,.4)">${(o.created_at||'').substring(0,16).replace('T',' ')}</td>
+            </tr>`).join('')
+          }</tbody>
+        </table>
+      </div>`;
+  } catch {
+    tabEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(220,80,80,.6)">Could not load orders — is the server running?</div>';
+  }
 }
 
 /* ── Subcategory dropdowns ── */
