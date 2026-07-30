@@ -61,10 +61,12 @@
 
 <div id="footerPlaceholder"></div>
 
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script src="../js/main.js"></script>
 <script>
   document.getElementById('navPlaceholder').outerHTML = injectNav('Collections');
   document.getElementById('footerPlaceholder').outerHTML = injectFooter();
+  window.__RAZORPAY_KEY = 'rzp_test_TJijg2rO6pSK90';
 
   let currentFilter = 'all';
   let _allProducts = [];

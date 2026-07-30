@@ -249,6 +249,120 @@ class Handler(BaseHTTPRequestHandler):
             if row: send_json(self, row_to_dict(row))
             else:   send_json(self, {'error':'Not found'}, 404)
 
+        elif path == '/api/cart':
+            qs  = parse_qs(urlparse(self.path).query)
+            sid = qs.get('session_id', ['anonymous'])[0]
+            with get_db() as db:
+                db.execute("""
+                    CREATE TABLE IF NOT EXISTS cart (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id TEXT NOT NULL,
+                        product_id INTEGER NOT NULL,
+                        productId TEXT DEFAULT '',
+                        name TEXT DEFAULT '',
+                        price INTEGER DEFAULT 0,
+                        img TEXT DEFAULT '',
+                        qty INTEGER DEFAULT 1,
+                        added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(session_id, product_id)
+                    )""")
+                rows = db.execute(
+                    'SELECT * FROM cart WHERE session_id=? ORDER BY added_at DESC', (sid,)
+                ).fetchall()
+            send_json(self, [row_to_dict(r) for r in rows])
+            return
+
+        elif path == '/api/cart':
+            sid = body.get('session_id', 'anonymous')
+            with get_db() as db:
+                db.execute("""
+                    CREATE TABLE IF NOT EXISTS cart (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id TEXT NOT NULL,
+                        product_id INTEGER NOT NULL,
+                        productId TEXT DEFAULT '',
+                        name TEXT DEFAULT '',
+                        price INTEGER DEFAULT 0,
+                        img TEXT DEFAULT '',
+                        qty INTEGER DEFAULT 1,
+                        added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(session_id, product_id)
+                    )""")
+                existing = db.execute(
+                    'SELECT qty FROM cart WHERE session_id=? AND product_id=?',
+                    (sid, body.get('product_id'))
+                ).fetchone()
+                if existing:
+                    db.execute(
+                        'UPDATE cart SET qty=qty+1 WHERE session_id=? AND product_id=?',
+                        (sid, body.get('product_id'))
+                    )
+                else:
+                    db.execute(
+                        'INSERT INTO cart (session_id,product_id,productId,name,price,img,qty) VALUES (?,?,?,?,?,?,?)',
+                        (sid, body.get('product_id'), body.get('productId',''),
+                         body.get('name',''), body.get('price',0),
+                         body.get('img',''), body.get('qty',1))
+                    )
+                rows = db.execute(
+                    'SELECT * FROM cart WHERE session_id=? ORDER BY added_at DESC', (sid,)
+                ).fetchall()
+            send_json(self, [row_to_dict(r) for r in rows], 201)
+            return
+
+        elif path == '/api/razorpay/create-order':
+            import urllib.request, urllib.error, base64, json as _json
+            key_id     = os.environ.get('RAZORPAY_KEY_ID', '')
+            key_secret = os.environ.get('RAZORPAY_KEY_SECRET', '')
+            if not key_id or not key_secret:
+                send_json(self, {'error': 'Razorpay keys not configured'}, 500); return
+            amount   = int(body.get('amount', 0))   # in paise (INR * 100)
+            currency = body.get('currency', 'INR')
+            receipt  = body.get('receipt', 'order_1')
+            payload  = _json.dumps({'amount': amount, 'currency': currency, 'receipt': receipt}).encode()
+            creds    = base64.b64encode(f'{key_id}:{key_secret}'.encode()).decode()
+            req = urllib.request.Request(
+                'https://api.razorpay.com/v1/orders',
+                data=payload, method='POST'
+            )
+            req.add_header('Authorization', f'Basic {creds}')
+            req.add_header('Content-Type', 'application/json')
+            try:
+                with urllib.request.urlopen(req) as r:
+                    order = _json.loads(r.read().decode())
+                send_json(self, order, 201)
+            except urllib.error.HTTPError as e:
+                send_json(self, {'error': e.read().decode()}, 400)
+            return
+
+        elif path == '/api/razorpay/verify':
+            import hmac, hashlib
+            key_secret = os.environ.get('RAZORPAY_KEY_SECRET', '').encode()
+            order_id   = body.get('razorpay_order_id', '')
+            payment_id = body.get('razorpay_payment_id', '')
+            signature  = body.get('razorpay_signature', '')
+            msg        = f'{order_id}|{payment_id}'.encode()
+            expected   = hmac.new(key_secret, msg, hashlib.sha256).hexdigest()
+            if expected == signature:
+                # Payment verified — save order to DB
+                with get_db() as db:
+                    db.execute("""
+                        CREATE TABLE IF NOT EXISTS orders (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            order_id TEXT, payment_id TEXT, signature TEXT,
+                            amount INTEGER, product_id INTEGER,
+                            product_name TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                        )""")
+                    db.execute(
+                        "INSERT INTO orders (order_id,payment_id,signature,amount,product_id,product_name) VALUES (?,?,?,?,?,?)",
+                        (order_id, payment_id, signature,
+                         body.get('amount', 0), body.get('product_id', 0), body.get('product_name', ''))
+                    )
+                send_json(self, {'ok': True, 'payment_id': payment_id})
+            else:
+                send_json(self, {'error': 'Invalid signature'}, 400)
+            return
+
         elif path == '/api/wishlist':
             qs = parse_qs(urlparse(self.path).query)
             sid = qs.get('session_id', ['anonymous'])[0]

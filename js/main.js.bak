@@ -33,7 +33,6 @@ function getApiBase(path) {
 }
 const STORE_KEY       = 'sissytrends_products_v3';
 const WISHLIST_KEY    = 'st_wishlist_items';
-const CART_KEY        = 'st_cart_items';
 const _productCache   = {}; // id → product, populated when products are fetched from API
 
 // ── Session ID ── generate once per browser, persist in localStorage
@@ -183,130 +182,6 @@ function removeFromWishlist(productId) {
   saveWishlistItems(items);
   if (removed) trackWishlistRemove(removed.productId || productId);
   updateWishlistBadge();
-}
-
-// -- Cart ------------------------------------------------------------------
-function getCartItems()  { try { return JSON.parse(localStorage.getItem(CART_KEY))||[]; } catch { return []; } }
-function saveCartItems(i){ localStorage.setItem(CART_KEY, JSON.stringify(i)); }
-
-function addToCart(product) {
-  if (!product) return;
-  let items = getCartItems();
-  const ex = items.find(i => i.id === product.id);
-  if (ex) { ex.qty = (ex.qty||1)+1; }
-  else { items.push({ id:product.id, productId:product.productId, name:product.name,
-    price:product.price, img:(product.img||'').replace(/^\.\.\//,''), category:product.category, qty:1 }); }
-  saveCartItems(items); updateCartBadge();
-  showToast('Cart: "' + product.name + '" added');
-  const sid=getSessionId();
-  const base=(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:5000':'';
-  fetch(base+'/api/cart',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({session_id:sid,product_id:product.id,productId:product.productId||'',
-    name:product.name,price:product.price,img:(product.img||'').replace(/^\.\.\//,''),qty:1})}).catch(function(){});
-}
-
-function removeFromCart(id){ saveCartItems(getCartItems().filter(function(i){return i.id!==id;})); updateCartBadge(); renderCartDrawer(); }
-
-function updateCartQty(id, delta){
-  var items=getCartItems(), item=items.find(function(i){return i.id===id;});
-  if(!item) return;
-  item.qty=Math.max(1,(item.qty||1)+delta);
-  saveCartItems(items); renderCartDrawer();
-}
-
-function cartTotal(){ return getCartItems().reduce(function(s,i){return s+(i.price*(i.qty||1));},0); }
-
-function updateCartBadge(){
-  var n=getCartItems().reduce(function(s,i){return s+(i.qty||1);},0);
-  document.querySelectorAll('#cartBadge').forEach(function(el){
-    el.textContent=n; el.style.display=n>0?'flex':'none';
-  });
-}
-
-function openCartDrawer(){
-  var d=document.getElementById('cartDrawer');
-  if(!d){
-    d=document.createElement('div'); d.id='cartDrawer';
-    d.style.cssText='position:fixed;top:0;right:0;width:min(420px,100vw);height:100vh;background:#faf5ec;z-index:9999;box-shadow:-8px 0 40px rgba(0,0,0,.18);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .35s cubic-bezier(.4,0,.2,1)';
-    d.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid rgba(201,162,78,.2)">'
-      +'<span style="font-family:\'Cinzel\',serif;font-size:14px;letter-spacing:.2em;color:#7a1f2e">MY CART</span>'
-      +'<button onclick="closeCartDrawer()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#7a1f2e">&times;</button>'
-      +'</div>'
-      +'<div id="cartItems" style="flex:1;overflow-y:auto;padding:16px 24px"></div>'
-      +'<div id="cartFooter" style="padding:20px 24px;border-top:1px solid rgba(201,162,78,.2)"></div>';
-    document.body.appendChild(d);
-    var ov=document.createElement('div'); ov.id='cartOverlay'; ov.onclick=closeCartDrawer;
-    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;display:none';
-    document.body.appendChild(ov);
-  }
-  renderCartDrawer();
-  setTimeout(function(){
-    d.style.transform='translateX(0)';
-    document.getElementById('cartOverlay').style.display='block';
-    document.body.style.overflow='hidden';
-  },10);
-}
-
-function closeCartDrawer(){
-  var d=document.getElementById('cartDrawer'), ov=document.getElementById('cartOverlay');
-  if(d) d.style.transform='translateX(100%)';
-  if(ov) ov.style.display='none';
-  document.body.style.overflow='';
-}
-
-function renderCartDrawer(){
-  var items=getCartItems(), el=document.getElementById('cartItems'), fe=document.getElementById('cartFooter');
-  if(!el) return;
-  if(!items.length){
-    el.innerHTML='<div style="text-align:center;padding:60px 0;color:#8c7b6b;font-family:\'Cormorant Garamond\',serif;font-style:italic">Your cart is empty</div>';
-    if(fe) fe.innerHTML=''; return;
-  }
-  el.innerHTML=items.map(function(i){
-    return '<div style="display:flex;gap:14px;padding:14px 0;border-bottom:1px solid rgba(201,162,78,.12)">'
-      +'<img src="'+i.img+'" alt="'+i.name+'" style="width:72px;height:90px;object-fit:cover;flex-shrink:0" onerror="this.style.background=\'linear-gradient(135deg,#EAD9C4,#E8C5C0)\'"/>'
-      +'<div style="flex:1;min-width:0">'
-      +'<div style="font-family:\'Cormorant Garamond\',serif;font-size:1rem;color:#1a0a06;margin-bottom:4px">'+i.name+'</div>'
-      +'<div style="font-family:\'Jost\',sans-serif;font-size:11px;color:#c9a24e;margin-bottom:10px">&#8377;'+i.price.toLocaleString()+'</div>'
-      +'<div style="display:flex;align-items:center;gap:10px">'
-      +'<button onclick="updateCartQty('+i.id+',-1)" style="width:26px;height:26px;border:1px solid rgba(201,162,78,.4);background:none;font-size:14px;cursor:pointer;color:#7a1f2e">&minus;</button>'
-      +'<span style="font-family:\'Jost\',sans-serif;font-size:13px;min-width:20px;text-align:center">'+(i.qty||1)+'</span>'
-      +'<button onclick="updateCartQty('+i.id+',1)" style="width:26px;height:26px;border:1px solid rgba(201,162,78,.4);background:none;font-size:14px;cursor:pointer;color:#7a1f2e">+</button>'
-      +'<button onclick="removeFromCart('+i.id+')" style="margin-left:auto;background:none;border:none;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#999;cursor:pointer;font-family:\'Jost\',sans-serif">Remove</button>'
-      +'</div></div></div>';
-  }).join('');
-  var total=cartTotal();
-  if(fe) fe.innerHTML=
-    '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px">'
-    +'<span style="font-family:\'Jost\',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#8c7b6b">Total</span>'
-    +'<span style="font-family:\'Cormorant Garamond\',serif;font-size:1.6rem;color:#7a1f2e">&#8377;'+total.toLocaleString()+'</span>'
-    +'</div>'
-    +'<button onclick="checkoutCart()" style="width:100%;padding:14px;background:#7a1f2e;border:none;color:#faf5ec;font-family:\'Jost\',sans-serif;font-size:11px;letter-spacing:.25em;text-transform:uppercase;cursor:pointer;margin-bottom:10px">'
-    +'Checkout &mdash; &#8377;'+total.toLocaleString()+'</button>'
-    +'<button onclick="closeCartDrawer()" style="width:100%;padding:12px;background:none;border:1px solid rgba(201,162,78,.3);color:#c9a24e;font-family:\'Jost\',sans-serif;font-size:10px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer">Continue Shopping</button>';
-}
-
-async function checkoutCart(){
-  var items=getCartItems(); if(!items.length) return;
-  var total=cartTotal(), amount=total*100;
-  var base=(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:5000':'';
-  try {
-    var res=await fetch(base+'/api/razorpay/create-order',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({amount:amount,currency:'INR',receipt:'cart_'+Date.now()})});
-    var order=await res.json();
-    if(!order.id){alert('Could not initiate payment.');return;}
-    new window.Razorpay({
-      key:window.__RAZORPAY_KEY||'', amount:order.amount, currency:order.currency,
-      name:'SissyTrends', description:items.length+' item(s)', order_id:order.id,
-      handler:async function(r){
-        var v=await fetch(base+'/api/razorpay/verify',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify(Object.assign({},r,{amount:order.amount,product_id:0,product_name:items.map(function(i){return i.name;}).join(', ')}))});
-        var res2=await v.json();
-        if(res2.ok){saveCartItems([]);updateCartBadge();closeCartDrawer();showToast('Payment successful! We will contact you shortly.');}
-        else alert('Payment verification failed. Please contact us on WhatsApp.');
-      },
-      prefill:{name:'',email:'',contact:''}, theme:{color:'#c9a24e'}
-    }).open();
-  } catch(e){ alert('Payment unavailable. Please enquire on WhatsApp.'); }
 }
 
 function updateWishlistBadge() {
@@ -968,10 +843,9 @@ function injectNav(activePage, isRoot) {
         <input type="hidden" id="modalNameHidden"/>
         <div style="display:flex;flex-direction:column;gap:10px">
           <button id="modalWishlistBtn" class="btn-primary" style="width:100%;justify-content:center" onclick="modalWishlistToggle()"><span>♡ Add to Wishlist</span></button>
-          <div style="display:flex;gap:8px">
-            <button style="flex:1;padding:12px;border:none;cursor:pointer;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="addToCart(_modalProduct)">+ Add to Cart</button>
-            <button style="flex:1;padding:12px;border:none;cursor:pointer;background:#7a1f2e;color:#faf5ec;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="buyNow()">Buy Now</button>
-          </div>
+          <button style="width:100%;padding:12px;border:none;cursor:pointer;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:600" onclick="buyNow()">
+            🛒 Buy Now
+          </button>
           <button class="btn-wa" style="width:100%;justify-content:center;padding:12px;border:none;cursor:pointer;background:#25d366;color:#fff;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;display:flex;align-items:center;gap:8px" onclick="enquireOnWhatsApp()">
             <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.528 5.84L.057 23.5l5.797-1.499A11.938 11.938 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.854 0-3.6-.497-5.11-1.367l-.366-.218-3.44.889.921-3.32-.239-.384A9.955 9.955 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
             Enquire on WhatsApp

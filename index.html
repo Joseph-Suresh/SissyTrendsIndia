@@ -745,11 +745,14 @@
 #styleMatcherOverlay { display:none; }
 #styleMatcherOverlay.open { display:flex !important; }
 </style>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script src="js/main.js"></script>
 <script>
   // ── Inject shared nav & footer ──
   document.getElementById('navPlaceholder').outerHTML = injectNav('Home', true);
   document.getElementById('footerPlaceholder').outerHTML = injectFooter(true);
+  // Razorpay public key — safe to expose in frontend
+  window.__RAZORPAY_KEY = 'rzp_test_TJijg2rO6pSK90';
 
   function observeNew(root) {
     root.querySelectorAll('.reveal:not(.visible)').forEach(r => {
