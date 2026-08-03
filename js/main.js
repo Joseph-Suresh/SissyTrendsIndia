@@ -32,6 +32,8 @@ function getApiBase(path) {
     : path;
 }
 const STORE_KEY       = 'sissytrends_products_v3';
+// Always clear product cache on load so prices come from API, not stale localStorage
+localStorage.removeItem(STORE_KEY);
 const WISHLIST_KEY    = 'st_wishlist_items';
 const CART_KEY        = 'st_cart_items';
 const _productCache   = {}; // id → product, populated when products are fetched from API
