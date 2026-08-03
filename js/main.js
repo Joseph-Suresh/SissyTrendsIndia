@@ -297,7 +297,7 @@ async function checkoutCart(){
 
 async function _processCartCheckout(customer){
   var items=getCartItems(); if(!items.length) return;
-  var total=cartTotal(), amount=total*100;
+  var total=cartTotal(), amount=(total + (window._checkoutShipping||0))*100;
   var base=(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:5000':'';
   try {
     var res=await fetch(base+'/api/razorpay/create-order',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -309,7 +309,7 @@ async function _processCartCheckout(customer){
       name:'SissyTrends', description:items.length+' item(s) | '+customer.name, order_id:order.id,
       handler:async function(r){
         var v=await fetch(base+'/api/razorpay/verify',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify(Object.assign({},r,{amount:order.amount,product_id:0,product_name:items.map(function(i){return i.name;}).join(', '),customer_name:customer.name||r.name||'',customer_email:customer.email||r.email||'',customer_phone:customer.phone||r.contact||''}))});
+          body:JSON.stringify(Object.assign({},r,{amount:order.amount,product_id:0,product_name:items.map(function(i){return i.name;}).join(', '),customer_name:customer.name||r.name||'',customer_email:customer.email||r.email||'',customer_phone:customer.phone||r.contact||'',customer_address:customer.address||''}))});
         var res2=await v.json();
         if(res2.ok){
           saveCartItems([]); updateCartBadge(); closeCartDrawer();
@@ -877,7 +877,7 @@ function showOrderComplete(details) {
             </div>
             <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:#f0ebe0;font-family:'Jost',sans-serif;font-size:12px;color:#5c3d1e">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c9a24e" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              sissytrends@gmail.com
+              help@sissytrends.in
             </div>
           </div>
         </div>
@@ -895,95 +895,666 @@ function showOrderComplete(details) {
 
 
 // ── Simple pre-checkout modal (no OTP) ───────────────────────────
+// ── Leaflet map loader ───────────────────────────────────────────
+function loadLeaflet(cb) {
+  if (window.L) { cb(); return; }
+  var link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+  document.head.appendChild(link);
+  var script = document.createElement('script');
+  script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  script.onload = cb;
+  document.head.appendChild(script);
+}
+
+// Warehouse: Saravanampatti, Coimbatore
+var ORIGIN_LAT = 11.0780, ORIGIN_LON = 77.0347;
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  var R = 6371;
+  var dLat = (lat2-lat1)*Math.PI/180;
+  var dLon = (lon2-lon1)*Math.PI/180;
+  var a = Math.sin(dLat/2)*Math.sin(dLat/2)
+        + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)
+        * Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Weight: 0.5 kg per item. Shipping based on distance + weight slabs
+// Uses India Post / courier standard approximation
+// ── India Post Speed Post 2026 official rates (excl. GST + 18%) ──
+// Source: clickpost.ai/blog/india-post-courier-charges (Jul 2026)
+// Weight per category: Saree=500g, Jewellery=100g, Decor=500g
+
+// Item weights in grams by category
+var ITEM_WEIGHT_G = {
+  sarees:    500,  // 0.5 kg
+  jewellery: 100,  // 0.1 kg
+  decor:     500   // 0.5 kg
+};
+
+// Speed Post rate table [local, <=200km, 201-1000km, 1001-2000km, >2000km]
+// Rows: [up to 50g, 51-200g, 201-500g, each additional 500g]
+var SP_RATES = [
+  [15, 35, 35, 35, 35],   // up to 50g
+  [25, 35, 40, 60, 70],   // 51-200g
+  [30, 50, 60, 80, 90],   // 201-500g
+  [10, 15, 30, 40, 50]    // each additional 500g
+];
+
+function getZoneIndex(distKm) {
+  if (distKm <= 10)   return 0;  // Local
+  if (distKm <= 200)  return 1;  // Up to 200 km
+  if (distKm <= 1000) return 2;  // 201-1000 km
+  if (distKm <= 2000) return 3;  // 1001-2000 km
+  return 4;                       // Above 2000 km
+}
+
+function getZoneName(distKm) {
+  if (distKm <= 10)   return 'Local';
+  if (distKm <= 200)  return 'Up to 200 km';
+  if (distKm <= 1000) return '201–1000 km';
+  if (distKm <= 2000) return '1001–2000 km';
+  return 'Above 2000 km';
+}
+
+function calcIndiaPostRate(totalWeightG, zoneIdx) {
+  var cost = 0;
+  if (totalWeightG <= 50)       cost = SP_RATES[0][zoneIdx];
+  else if (totalWeightG <= 200) cost = SP_RATES[1][zoneIdx];
+  else if (totalWeightG <= 500) cost = SP_RATES[2][zoneIdx];
+  else {
+    // Base for first 500g
+    cost = SP_RATES[2][zoneIdx];
+    // Each additional 500g slab
+    var remaining = totalWeightG - 500;
+    var extraSlabs = Math.ceil(remaining / 500);
+    cost += extraSlabs * SP_RATES[3][zoneIdx];
+  }
+  // Add 18% GST
+  return Math.round(cost * 1.18);
+}
+
+function calcShipping(distKm, cartItems) {
+  // cartItems: array of {category, qty} or just a count
+  var totalWeightG = 0;
+  var itemSummary = [];
+
+  if (Array.isArray(cartItems) && cartItems.length > 0) {
+    cartItems.forEach(function(item) {
+      var cat  = (item.category || 'sarees').toLowerCase();
+      var wt   = ITEM_WEIGHT_G[cat] || 500;
+      var qty  = item.qty || 1;
+      totalWeightG += wt * qty;
+      itemSummary.push(qty + '×' + cat + '(' + wt + 'g)');
+    });
+  } else {
+    // Fallback: treat as saree count
+    var qty = (typeof cartItems === 'number') ? cartItems : 1;
+    totalWeightG = qty * 500;
+    itemSummary.push(qty + '×saree(500g)');
+  }
+
+  var zoneIdx   = getZoneIndex(distKm);
+  var zoneName  = getZoneName(distKm);
+  var baseRate  = calcIndiaPostRate(totalWeightG, zoneIdx);
+  var weightKg  = (totalWeightG / 1000).toFixed(2);
+
+  var breakdown = itemSummary.join(' + ')
+    + ' = ' + totalWeightG + 'g'
+    + ' · ' + zoneName
+    + ' · India Post Speed Post (incl. GST)';
+
+  return {
+    cost:      baseRate,
+    label:     baseRate === 0 ? 'Free Delivery' : '₹' + baseRate,
+    zone:      zoneName,
+    weightKg:  weightKg,
+    weightG:   totalWeightG,
+    breakdown: breakdown
+  };
+}
+
+function getCartItemCount() {
+  try {
+    var items = JSON.parse(localStorage.getItem('st_cart_items') || '[]');
+    if (!items.length) return 1;
+    return items.reduce(function(s, i){ return s + (i.qty||1); }, 0);
+  } catch(e) { return 1; }
+}
+
+function getCartItemsForShipping() {
+  try {
+    var items = JSON.parse(localStorage.getItem('st_cart_items') || '[]');
+    return items.length ? items : null;
+  } catch(e) { return null; }
+}
+
+function openMapPicker() {
+  var mapModal = document.getElementById('mapPickerModal');
+  if (!mapModal) {
+    mapModal = document.createElement('div');
+    mapModal.id = 'mapPickerModal';
+    mapModal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px';
+    mapModal.innerHTML =
+      '<div style="background:#faf5ec;width:100%;max-width:580px;border:1px solid rgba(201,162,78,.3)">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(201,162,78,.2)">'
+      +'<span style="font-family:\'Cinzel\',serif;font-size:10px;letter-spacing:.2em;color:#7a1f2e">PIN YOUR DELIVERY LOCATION (INDIA ONLY)</span>'
+      +'<button onclick="closeMapPicker()" style="background:none;border:none;font-size:22px;cursor:pointer;color:rgba(122,31,46,.4)">&times;</button>'
+      +'</div>'
+      +'<div id="leafletMap" style="height:340px;width:100%"></div>'
+      +'<div style="padding:14px 16px;border-top:1px solid rgba(201,162,78,.2)">'
+      +'<div id="mapAddressPreview" style="font-family:\'Jost\',sans-serif;font-size:12px;color:#5c3d1e;min-height:18px;margin-bottom:8px">Move the pin to your exact location</div>'
+      +'<div id="mapShippingInfo" style="display:none;background:#f5ede0;border:1px solid rgba(201,162,78,.25);padding:10px 12px;margin-bottom:8px;font-family:\'Jost\',sans-serif;font-size:11px">'
+      +'  <div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+      +'    <span id="mapDistLabel" style="color:#8c7b6b"></span>'
+      +'    <span id="mapShipCost" style="color:#7a1f2e;font-weight:700;font-size:13px"></span>'
+      +'  </div>'
+      +'  <div id="mapShipBreakdown" style="color:#aaa;font-size:10px"></div>'
+      +'</div>'
+      +'<div id="mapIndiaError" style="display:none;color:#c0392b;font-family:\'Jost\',sans-serif;font-size:11px;padding:6px 0;margin-bottom:6px">&#9888; We only deliver within India. Please move the pin inside India.</div>'
+      +'<button onclick="confirmMapAddress()" id="mapConfirmBtn" style="width:100%;padding:11px;background:#7a1f2e;border:none;color:#faf5ec;font-family:\'Jost\',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer">Confirm This Location</button>'
+      +'</div>'
+      +'</div>';
+    document.body.appendChild(mapModal);
+  }
+  mapModal.style.display = 'flex';
+
+  loadLeaflet(function() {
+    setTimeout(function() {
+      if (window._leafletMap) { window._leafletMap.remove(); window._leafletMap = null; }
+
+      var defaultLat = 11.0168, defaultLon = 76.9558; // Coimbatore center
+      var indiaBounds = window.L.latLngBounds([[6.55, 68.11], [35.67, 97.40]]);
+      var map = window.L.map('leafletMap', { maxBounds: indiaBounds, maxBoundsViscosity: 1.0 })
+                        .setView([defaultLat, defaultLon], 11);
+      window._leafletMap = map;
+
+      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '\u00a9 OpenStreetMap', minZoom: 5, maxZoom: 18
+      }).addTo(map);
+
+      // Warehouse marker
+      window.L.circleMarker([ORIGIN_LAT, ORIGIN_LON], {
+        radius: 8, color: '#c9a24e', fillColor: '#c9a24e', fillOpacity: 0.9, weight: 2
+      }).addTo(map).bindPopup('<b style="font-size:11px">SissyTrends Warehouse<br>Saravanampatti, Coimbatore</b>');
+
+      var marker = window.L.marker([defaultLat, defaultLon], { draggable: true }).addTo(map);
+      window._mapMarker = marker;
+      window._mapAddress = '';
+      window._mapShipping = 0;
+      window._mapDistKm = 0;
+
+      function isInIndia(lat, lon) {
+        return lat >= 6.55 && lat <= 35.67 && lon >= 68.11 && lon <= 97.40;
+      }
+
+      function updateUI(lat, lon) {
+        var errEl   = document.getElementById('mapIndiaError');
+        var shipEl  = document.getElementById('mapShippingInfo');
+        var distEl  = document.getElementById('mapDistLabel');
+        var costEl  = document.getElementById('mapShipCost');
+        var brkEl   = document.getElementById('mapShipBreakdown');
+        var btn     = document.getElementById('mapConfirmBtn');
+
+        if (!isInIndia(lat, lon)) {
+          if (errEl) errEl.style.display = 'block';
+          if (shipEl) shipEl.style.display = 'none';
+          if (btn) { btn.disabled = true; btn.style.opacity = '0.4'; }
+          window._mapShipping = -1;
+          return;
+        }
+        if (errEl) errEl.style.display = 'none';
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+
+        var distKm = Math.round(haversineKm(ORIGIN_LAT, ORIGIN_LON, lat, lon));
+        var cartItems = getCartItemsForShipping();
+        var qty = cartItems ? getCartItemCount() : 1;
+        var ship   = calcShipping(distKm, cartItems || qty);
+
+        window._mapDistKm   = distKm;
+        window._mapShipping = ship.cost;
+        window._mapShipObj  = ship;
+
+        if (shipEl) shipEl.style.display = 'block';
+        if (distEl) distEl.textContent = '~' + distKm + ' km \u00b7 ' + qty + ' item(s) \u00b7 ' + ship.weightKg + 'kg';
+        if (costEl) costEl.textContent = 'Shipping: ' + ship.label;
+        if (brkEl)  brkEl.textContent  = ship.breakdown;
+      }
+
+      function reverseGeocode(lat, lon) {
+        var base = (window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')
+          ? 'http://localhost:5000' : '';
+        fetch(base+'/api/geocode?lat='+lat+'&lon='+lon)
+          .then(function(r){return r.json();})
+          .then(function(d){
+            var addr = d.location || (lat.toFixed(4)+', '+lon.toFixed(4));
+            window._mapAddress = addr;
+            var el = document.getElementById('mapAddressPreview');
+            if (el) el.innerHTML = '\uD83D\uDCCD <b>'+addr+'</b>';
+            updateUI(lat, lon);
+          }).catch(function(){
+            window._mapAddress = lat.toFixed(4)+', '+lon.toFixed(4);
+            updateUI(lat, lon);
+          });
+      }
+
+      marker.on('dragend', function(e) {
+        var pos = e.target.getLatLng();
+        if (!isInIndia(pos.lat, pos.lng)) {
+          marker.setLatLng([defaultLat, defaultLon]);
+          reverseGeocode(defaultLat, defaultLon);
+        } else {
+          reverseGeocode(pos.lat, pos.lng);
+        }
+      });
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(pos) {
+          var lat = pos.coords.latitude, lon = pos.coords.longitude;
+          if (isInIndia(lat, lon)) {
+            map.setView([lat, lon], 14);
+            marker.setLatLng([lat, lon]);
+            reverseGeocode(lat, lon);
+          } else {
+            reverseGeocode(defaultLat, defaultLon);
+          }
+        }, function() { reverseGeocode(defaultLat, defaultLon); }, { timeout: 6000 });
+      } else {
+        reverseGeocode(defaultLat, defaultLon);
+      }
+
+      setTimeout(function(){ map.invalidateSize(); }, 100);
+    }, 100);
+  });
+}
+
+function closeMapPicker() {
+  var m = document.getElementById('mapPickerModal');
+  if (m) m.style.display = 'none';
+}
+
+function confirmMapAddress() {
+  if (window._mapShipping === -1) return;
+  var addr   = window._mapAddress || '';
+  var ship   = window._mapShipObj || { cost:0, label:'Free Delivery', breakdown:'' };
+  var distKm = window._mapDistKm  || 0;
+
+  var el = document.getElementById('scAddress');
+  if (el && addr) el.value = addr;
+
+  // Show shipping below address
+  var shipEl = document.getElementById('scShippingInfo');
+  if (!shipEl) {
+    shipEl = document.createElement('div');
+    shipEl.id = 'scShippingInfo';
+    shipEl.style.cssText = 'font-family:\'Jost\',sans-serif;font-size:11px;padding:8px 12px;background:#f5ede0;border:1px solid rgba(201,162,78,.2);margin-top:6px';
+    if (el && el.parentNode) el.parentNode.appendChild(shipEl);
+  }
+  shipEl.innerHTML =
+    '<span style="color:#8c7b6b">~'+distKm+' km &mdash; '+ship.weightKg+'kg &mdash; </span>'
+    +'<span style="color:#7a1f2e;font-weight:600">Shipping: '+ship.label+'</span>'
+    +(ship.breakdown ? '<br><span style="color:#aaa;font-size:10px">'+ship.breakdown+'</span>' : '');
+
+  window._checkoutShipping = ship.cost;
+  window._checkoutDistKm   = distKm;
+  window._checkoutShipLabel = ship.label;
+  closeMapPicker();
+}
+
+// ── Address autocomplete (India only via Nominatim proxy) ───────────
+var _addrTimer = null;
+function addressAutocomplete(query) {
+  var sugEl = document.getElementById('scAddressSuggestions');
+  if (!sugEl) return;
+  if (!query || query.length < 3) { sugEl.style.display = 'none'; return; }
+  clearTimeout(_addrTimer);
+  _addrTimer = setTimeout(function() {
+    var base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://localhost:5000' : '';
+    fetch(base + '/api/address-suggest?q=' + encodeURIComponent(query))
+      .then(function(r) { return r.json(); })
+      .then(function(results) {
+        if (!results.length) { sugEl.style.display = 'none'; return; }
+        sugEl.innerHTML = results.map(function(r) {
+          // Show: display name (state)
+          var parts  = r.display_name.split(', ');
+          var state  = r.address && r.address.state ? r.address.state : '';
+          var label  = parts.slice(0, 3).join(', ');
+          var sub    = state ? state : parts.slice(-2).join(', ');
+          return '<div onclick="selectAddress(\'' + r.display_name.replace(/'/g, '') + '\', ' + r.lat + ', ' + r.lon + ')"'
+            + ' style="padding:10px 14px;cursor:pointer;border-bottom:1px solid rgba(201,162,78,.1);font-family:\'Jost\',sans-serif"'
+            + ' onmouseover="this.style.background=\'#fdf5e6\'" onmouseout="this.style.background=\'#fff\'">'
+            + '<div style="font-size:13px;color:#1a0a06">' + label + '</div>'
+            + '<div style="font-size:11px;color:#c9a24e;margin-top:2px">' + sub + '</div>'
+            + '</div>';
+        }).join('');
+        sugEl.style.display = 'block';
+      }).catch(function() { sugEl.style.display = 'none'; });
+  }, 400);
+}
+
+function selectAddress(displayName, lat, lon) {
+  var input  = document.getElementById('scAddress');
+  var sugEl  = document.getElementById('scAddressSuggestions');
+  if (input) input.value = displayName;
+  if (sugEl) sugEl.style.display = 'none';
+  // Update shipping based on selected location
+  var distKm = Math.round(haversineKm(ORIGIN_LAT, ORIGIN_LON, lat, lon));
+  var cartItems = getCartItemsForShipping();
+  var ship = calcShipping(distKm, cartItems || 1);
+  window._checkoutShipping  = ship.cost;
+  window._checkoutDistKm    = distKm;
+  window._checkoutShipLabel = ship.label;
+  // Show shipping below address
+  var shipEl = document.getElementById('scShippingInfo');
+  if (!shipEl) {
+    shipEl = document.createElement('div');
+    shipEl.id = 'scShippingInfo';
+    shipEl.style.cssText = 'font-family:\'Jost\',sans-serif;font-size:11px;padding:8px 12px;background:#f5ede0;border:1px solid rgba(201,162,78,.2);margin-top:6px';
+    var addrInput = document.getElementById('scAddress');
+    if (addrInput && addrInput.parentNode && addrInput.parentNode.parentNode) {
+      addrInput.parentNode.parentNode.appendChild(shipEl);
+    }
+  }
+  shipEl.innerHTML =
+    '<span style="color:#8c7b6b">~' + distKm + ' km &mdash; </span>'
+    + '<span style="color:#7a1f2e;font-weight:600">Shipping: ' + ship.label + '</span>'
+    + (ship.breakdown ? '<br><span style="color:#aaa;font-size:10px">' + ship.breakdown + '</span>' : '');
+}
+
+// ── Pincode-based shipping calculation ───────────────────────────
+// Approximate road distance from Coimbatore to each state (km)
+var STATE_DIST_KM = {
+  'Tamil Nadu':120,'Kerala':180,'Karnataka':350,'Andhra Pradesh':650,
+  'Telangana':800,'Puducherry':500,'Goa':800,'Maharashtra':1050,
+  'Gujarat':1450,'Rajasthan':1800,'Madhya Pradesh':1400,'Chhattisgarh':1500,
+  'Odisha':1700,'West Bengal':2100,'Jharkhand':2000,'Bihar':2200,
+  'Uttar Pradesh':2000,'Delhi':2100,'Chandigarh':2400,'Haryana':2200,
+  'Punjab':2500,'Himachal Pradesh':2600,'Jammu and Kashmir':2900,
+  'Ladakh':3100,'Sikkim':2800,'Assam':2800,'Meghalaya':2900,
+  'Manipur':3000,'Mizoram':3000,'Nagaland':3100,'Arunachal Pradesh':3200,
+  'Tripura':2900,'Uttarakhand':2400,'Andaman and Nicobar Islands':1800,
+  'Lakshadweep':700,'Dadra and Nagar Haveli and Daman and Diu':1400
+};
+
+// 3-digit pincode prefix to state
+var PIN3_STATE = {
+  '600':'Tamil Nadu','601':'Tamil Nadu','602':'Tamil Nadu','603':'Tamil Nadu',
+  '604':'Tamil Nadu','605':'Tamil Nadu','606':'Tamil Nadu','607':'Tamil Nadu',
+  '608':'Tamil Nadu','609':'Tamil Nadu','610':'Tamil Nadu','611':'Tamil Nadu',
+  '612':'Tamil Nadu','613':'Tamil Nadu','614':'Tamil Nadu','615':'Tamil Nadu',
+  '616':'Tamil Nadu','617':'Tamil Nadu','618':'Tamil Nadu','619':'Tamil Nadu',
+  '620':'Tamil Nadu','621':'Tamil Nadu','622':'Tamil Nadu','623':'Tamil Nadu',
+  '624':'Tamil Nadu','625':'Tamil Nadu','626':'Tamil Nadu','627':'Tamil Nadu',
+  '628':'Tamil Nadu','629':'Tamil Nadu','630':'Tamil Nadu','631':'Tamil Nadu',
+  '632':'Tamil Nadu','633':'Tamil Nadu','634':'Tamil Nadu','635':'Tamil Nadu',
+  '636':'Tamil Nadu','637':'Tamil Nadu','638':'Tamil Nadu','639':'Tamil Nadu',
+  '640':'Tamil Nadu','641':'Tamil Nadu','642':'Tamil Nadu','643':'Tamil Nadu',
+  '644':'Tamil Nadu','645':'Tamil Nadu','646':'Tamil Nadu','647':'Tamil Nadu',
+  '648':'Tamil Nadu','649':'Tamil Nadu','650':'Tamil Nadu','651':'Tamil Nadu',
+  '652':'Tamil Nadu','653':'Tamil Nadu','654':'Tamil Nadu','655':'Tamil Nadu',
+  '656':'Tamil Nadu','657':'Tamil Nadu','658':'Tamil Nadu','659':'Tamil Nadu',
+  '660':'Tamil Nadu','661':'Tamil Nadu',
+  '670':'Kerala','671':'Kerala','672':'Kerala','673':'Kerala','674':'Kerala',
+  '675':'Kerala','676':'Kerala','677':'Kerala','678':'Kerala','679':'Kerala',
+  '680':'Kerala','681':'Kerala','682':'Kerala','683':'Kerala','684':'Kerala',
+  '685':'Kerala','686':'Kerala','687':'Kerala','688':'Kerala','689':'Kerala',
+  '560':'Karnataka','561':'Karnataka','562':'Karnataka','563':'Karnataka',
+  '564':'Karnataka','565':'Karnataka','566':'Karnataka','567':'Karnataka',
+  '568':'Karnataka','569':'Karnataka','570':'Karnataka','571':'Karnataka',
+  '572':'Karnataka','573':'Karnataka','574':'Karnataka','575':'Karnataka',
+  '576':'Karnataka','577':'Karnataka','578':'Karnataka','579':'Karnataka',
+  '580':'Karnataka','581':'Karnataka','582':'Karnataka','583':'Karnataka',
+  '584':'Karnataka','585':'Karnataka','586':'Karnataka','587':'Karnataka',
+  '588':'Karnataka','589':'Karnataka',
+  '500':'Telangana','501':'Telangana','502':'Telangana','503':'Telangana',
+  '504':'Telangana','505':'Telangana','506':'Telangana','507':'Telangana',
+  '508':'Telangana','509':'Telangana',
+  '515':'Andhra Pradesh','516':'Andhra Pradesh','517':'Andhra Pradesh',
+  '518':'Andhra Pradesh','519':'Andhra Pradesh','520':'Andhra Pradesh',
+  '521':'Andhra Pradesh','522':'Andhra Pradesh','523':'Andhra Pradesh',
+  '524':'Andhra Pradesh','525':'Andhra Pradesh','530':'Andhra Pradesh',
+  '531':'Andhra Pradesh','532':'Andhra Pradesh','533':'Andhra Pradesh',
+  '534':'Andhra Pradesh','535':'Andhra Pradesh',
+  '403':'Goa',
+  '400':'Maharashtra','401':'Maharashtra','402':'Maharashtra',
+  '410':'Maharashtra','411':'Maharashtra','412':'Maharashtra',
+  '413':'Maharashtra','414':'Maharashtra','415':'Maharashtra',
+  '416':'Maharashtra','421':'Maharashtra','422':'Maharashtra',
+  '423':'Maharashtra','424':'Maharashtra','425':'Maharashtra',
+  '431':'Maharashtra','440':'Maharashtra','441':'Maharashtra',
+  '442':'Maharashtra','443':'Maharashtra','444':'Maharashtra',
+  '445':'Maharashtra','446':'Maharashtra',
+  '360':'Gujarat','361':'Gujarat','362':'Gujarat','363':'Gujarat',
+  '364':'Gujarat','365':'Gujarat','366':'Gujarat','367':'Gujarat',
+  '368':'Gujarat','370':'Gujarat','380':'Gujarat','382':'Gujarat',
+  '383':'Gujarat','384':'Gujarat','385':'Gujarat','387':'Gujarat',
+  '388':'Gujarat','389':'Gujarat','390':'Gujarat','391':'Gujarat',
+  '392':'Gujarat','393':'Gujarat','394':'Gujarat','395':'Gujarat',
+  '396':'Gujarat',
+  '302':'Rajasthan','303':'Rajasthan','304':'Rajasthan','305':'Rajasthan',
+  '306':'Rajasthan','307':'Rajasthan','311':'Rajasthan','312':'Rajasthan',
+  '313':'Rajasthan','314':'Rajasthan','321':'Rajasthan','322':'Rajasthan',
+  '323':'Rajasthan','324':'Rajasthan','325':'Rajasthan','326':'Rajasthan',
+  '327':'Rajasthan','328':'Rajasthan','331':'Rajasthan','332':'Rajasthan',
+  '333':'Rajasthan','334':'Rajasthan','335':'Rajasthan','341':'Rajasthan',
+  '342':'Rajasthan','343':'Rajasthan','344':'Rajasthan',
+  '452':'Madhya Pradesh','453':'Madhya Pradesh','454':'Madhya Pradesh',
+  '455':'Madhya Pradesh','456':'Madhya Pradesh','457':'Madhya Pradesh',
+  '458':'Madhya Pradesh','459':'Madhya Pradesh','460':'Madhya Pradesh',
+  '461':'Madhya Pradesh','462':'Madhya Pradesh','463':'Madhya Pradesh',
+  '464':'Madhya Pradesh','465':'Madhya Pradesh','466':'Madhya Pradesh',
+  '467':'Madhya Pradesh','470':'Madhya Pradesh','471':'Madhya Pradesh',
+  '472':'Madhya Pradesh','473':'Madhya Pradesh','474':'Madhya Pradesh',
+  '475':'Madhya Pradesh','476':'Madhya Pradesh','477':'Madhya Pradesh',
+  '478':'Madhya Pradesh','480':'Madhya Pradesh','481':'Madhya Pradesh',
+  '482':'Madhya Pradesh','483':'Madhya Pradesh','484':'Madhya Pradesh',
+  '485':'Madhya Pradesh','486':'Madhya Pradesh','487':'Madhya Pradesh',
+  '488':'Madhya Pradesh','489':'Madhya Pradesh',
+  '490':'Chhattisgarh','491':'Chhattisgarh','492':'Chhattisgarh',
+  '493':'Chhattisgarh','494':'Chhattisgarh','495':'Chhattisgarh',
+  '496':'Chhattisgarh','497':'Chhattisgarh',
+  '751':'Odisha','752':'Odisha','753':'Odisha','754':'Odisha',
+  '755':'Odisha','756':'Odisha','757':'Odisha','758':'Odisha',
+  '700':'West Bengal','711':'West Bengal','712':'West Bengal',
+  '713':'West Bengal','721':'West Bengal','722':'West Bengal',
+  '723':'West Bengal','731':'West Bengal','732':'West Bengal',
+  '733':'West Bengal','734':'West Bengal','741':'West Bengal',
+  '742':'West Bengal','743':'West Bengal','744':'West Bengal',
+  '800':'Bihar','801':'Bihar','802':'Bihar','803':'Bihar',
+  '804':'Bihar','805':'Bihar','811':'Bihar','812':'Bihar',
+  '813':'Bihar','814':'Bihar','815':'Bihar','816':'Bihar',
+  '821':'Bihar','822':'Bihar','823':'Bihar','824':'Bihar',
+  '825':'Bihar','826':'Bihar','827':'Jharkhand','828':'Jharkhand',
+  '829':'Jharkhand','831':'Jharkhand','832':'Jharkhand','833':'Jharkhand',
+  '834':'Jharkhand','835':'Jharkhand',
+  '201':'Uttar Pradesh','202':'Uttar Pradesh','203':'Uttar Pradesh',
+  '204':'Uttar Pradesh','205':'Uttar Pradesh','206':'Uttar Pradesh',
+  '207':'Uttar Pradesh','208':'Uttar Pradesh','209':'Uttar Pradesh',
+  '210':'Uttar Pradesh','211':'Uttar Pradesh','212':'Uttar Pradesh',
+  '221':'Uttar Pradesh','226':'Uttar Pradesh','231':'Uttar Pradesh',
+  '241':'Uttar Pradesh','261':'Uttar Pradesh','271':'Uttar Pradesh',
+  '281':'Uttar Pradesh','282':'Uttar Pradesh','283':'Uttar Pradesh',
+  '110':'Delhi','111':'Delhi',
+  '121':'Haryana','122':'Haryana','123':'Haryana','124':'Haryana',
+  '125':'Haryana','126':'Haryana','127':'Haryana','128':'Haryana',
+  '131':'Haryana','132':'Haryana','133':'Haryana','134':'Haryana',
+  '135':'Haryana','136':'Haryana',
+  '140':'Punjab','141':'Punjab','142':'Punjab','143':'Punjab',
+  '144':'Punjab','145':'Punjab','146':'Punjab','147':'Punjab',
+  '148':'Punjab','151':'Punjab','152':'Punjab','153':'Punjab',
+  '154':'Punjab','155':'Punjab','160':'Chandigarh',
+  '171':'Himachal Pradesh','172':'Himachal Pradesh','173':'Himachal Pradesh',
+  '174':'Himachal Pradesh','175':'Himachal Pradesh','176':'Himachal Pradesh',
+  '177':'Himachal Pradesh',
+  '180':'Jammu and Kashmir','181':'Jammu and Kashmir','182':'Jammu and Kashmir',
+  '190':'Jammu and Kashmir','191':'Jammu and Kashmir','192':'Jammu and Kashmir',
+  '193':'Jammu and Kashmir','194':'Jammu and Kashmir',
+  '244':'Uttarakhand','246':'Uttarakhand','247':'Uttarakhand',
+  '248':'Uttarakhand','249':'Uttarakhand','263':'Uttarakhand',
+  '781':'Assam','782':'Assam','783':'Assam','784':'Assam','785':'Assam',
+  '786':'Assam','787':'Assam','788':'Assam','793':'Meghalaya','794':'Meghalaya',
+  '795':'Manipur','796':'Mizoram','797':'Nagaland','798':'Nagaland',
+  '790':'Arunachal Pradesh','791':'Arunachal Pradesh','792':'Arunachal Pradesh',
+  '799':'Tripura','744':'Andaman and Nicobar Islands'
+};
+
+function getPinState(pin) {
+  if (!pin || pin.length !== 6) return null;
+  return PIN3_STATE[pin.substring(0,3)] || null;
+}
+
+var _pinTimer = null;
+function lookupPincode(pin) {
+  if (!pin || !/^\d{6}$/.test(pin)) return;
+  clearTimeout(_pinTimer);
+  _pinTimer = setTimeout(function() {
+    var shipEl = getOrCreateShippingEl();
+    // Try pincode prefix map first
+    var state = getPinState(pin);
+    // Fall back to selected state dropdown
+    if (!state) {
+      var selState = document.getElementById('scState');
+      if (selState && selState.value) state = selState.value;
+    }
+    if (!state) {
+      if (shipEl) shipEl.innerHTML = '<span style="color:#aaa">Select your state to see shipping cost</span>';
+      return;
+    }
+    var distKm    = STATE_DIST_KM[state] || 1500;
+    var cartItems = getCartItemsForShipping();
+    var ship      = calcShipping(distKm, cartItems || 1);
+    window._checkoutShipping  = ship.cost;
+    window._checkoutDistKm    = distKm;
+    window._checkoutShipLabel = ship.label;
+    if (shipEl) {
+      shipEl.innerHTML =
+        '<span style="color:#8c7b6b">' + state + ' \u00b7 ~' + distKm + ' km \u00b7 </span>'
+        + '<span style="color:#7a1f2e;font-weight:700">Shipping: ' + ship.label + '</span>'
+        + '<br><span style="color:#aaa;font-size:10px">' + ship.breakdown + '</span>';
+    }
+  }, 300);
+}
+
+function getOrCreateShippingEl() {
+  var el = document.getElementById('scShippingInfo');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'scShippingInfo';
+    el.style.cssText = 'font-family:\'Jost\',sans-serif;font-size:11px;padding:8px 12px;background:#f5ede0;border:1px solid rgba(201,162,78,.2);margin-top:6px';
+    var state = document.getElementById('scState');
+    if (state && state.parentNode) state.parentNode.insertBefore(el, state.nextSibling);
+  }
+  return el;
+}
+
 function openSimpleCheckout(callback) {
-  let modal = document.getElementById('simpleCheckoutModal');
+  var modal = document.getElementById('simpleCheckoutModal');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'simpleCheckoutModal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
-    modal.innerHTML = `
-      <div style="background:#faf5ec;max-width:420px;width:100%;position:relative;border:1px solid rgba(201,162,78,.3)">
-        <div style="height:4px;background:linear-gradient(90deg,#7a1f2e,#c9a24e,#7a1f2e)"></div>
-        <div style="padding:28px 28px 24px">
-          <button onclick="closeSimpleCheckout()" style="position:absolute;top:10px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:rgba(122,31,46,.4)">&times;</button>
-          <div style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:.25em;color:#c9a24e;margin-bottom:8px">CHECKOUT</div>
-          <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:400;color:#7a1f2e;margin-bottom:18px">Your Details</h3>
-
-          <div style="margin-bottom:12px">
-            <label style="display:block;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:5px">Full Name *</label>
-            <input id="scName" type="text" placeholder="e.g. Priya Sharma"
-              style="width:100%;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:'Jost',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>
-          </div>
-
-          <div style="margin-bottom:12px">
-            <label style="display:block;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:5px">Mobile Number *</label>
-            <div style="display:flex;gap:6px">
-              <span style="padding:10px 10px;background:#f0ebe0;border:1px solid rgba(201,162,78,.3);font-family:'Jost',sans-serif;font-size:13px;color:#5c3d1e;white-space:nowrap">+91</span>
-              <input id="scPhone" type="tel" placeholder="10-digit mobile" maxlength="10"
-                style="flex:1;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:'Jost',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>
-            </div>
-          </div>
-
-          <div style="margin-bottom:20px">
-            <label style="display:block;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:5px">
-              Email <span style="color:#aaa;font-size:9px">(optional)</span>
-            </label>
-            <input id="scEmail" type="email" placeholder="e.g. priya@email.com"
-              style="width:100%;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:'Jost',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>
-          </div>
-
-          <div id="scError" style="display:none;color:#c0392b;font-family:'Jost',sans-serif;font-size:12px;margin-bottom:12px"></div>
-
-          <button onclick="submitSimpleCheckout()"
-            style="width:100%;padding:13px;background:#7a1f2e;border:none;color:#faf5ec;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer">
-            Proceed to Payment
-          </button>
-        </div>
-        <div style="height:2px;background:linear-gradient(90deg,transparent,#c9a24e,transparent)"></div>
-      </div>`;
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+    modal.innerHTML =
+      '<div style="background:#faf5ec;max-width:440px;width:100%;position:relative;border:1px solid rgba(201,162,78,.3);margin:auto">'
+      +'<div style="height:4px;background:linear-gradient(90deg,#7a1f2e,#c9a24e,#7a1f2e)"></div>'
+      +'<div style="padding:28px 28px 24px">'
+      +'<button onclick="closeSimpleCheckout()" style="position:absolute;top:10px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:rgba(122,31,46,.4)">&times;</button>'
+      +'<div style="font-family:\'Cinzel\',serif;font-size:10px;letter-spacing:.25em;color:#c9a24e;margin-bottom:8px">CHECKOUT</div>'
+      +'<h3 style="font-family:\'Cormorant Garamond\',serif;font-size:1.5rem;font-weight:400;color:#7a1f2e;margin-bottom:18px">Your Details</h3>'
+      +'<div style="margin-bottom:12px">'
+      +'<label style="display:block;font-family:\'Jost\',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:5px">Full Name *</label>'
+      +'<input id="scName" type="text" placeholder="e.g. Priya Sharma" style="width:100%;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:\'Jost\',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>'
+      +'</div>'
+      +'<div style="margin-bottom:12px">'
+      +'<label style="display:block;font-family:\'Jost\',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:5px">Mobile Number *</label>'
+      +'<div style="display:flex;gap:6px">'
+      +'<span style="padding:10px 10px;background:#f0ebe0;border:1px solid rgba(201,162,78,.3);font-family:\'Jost\',sans-serif;font-size:13px;color:#5c3d1e;white-space:nowrap">+91</span>'
+      +'<input id="scPhone" type="tel" placeholder="10-digit mobile" maxlength="10" style="flex:1;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:\'Jost\',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>'
+      +'</div></div>'
+      +'<div style="margin-bottom:12px">'
+      +'<label style="display:block;font-family:\'Jost\',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:5px">Email <span style="color:#aaa;font-size:9px">(optional)</span></label>'
+      +'<input id="scEmail" type="email" placeholder="e.g. priya@email.com" style="width:100%;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:\'Jost\',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>'
+      +'</div>'
+      +'<div style="margin-bottom:12px">'
+      +'<label style="display:block;font-family:\'Jost\',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:5px">Delivery Address *</label>'
+      +'<input id="scHouse" type="text" placeholder="House / Flat / Door No. & Street" style="width:100%;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:\'Jost\',sans-serif;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:6px"/>'
+      +'<input id="scArea" type="text" placeholder="Area / Locality / Landmark" style="width:100%;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:\'Jost\',sans-serif;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:6px"/>'
+      +'<div style="display:flex;gap:6px;margin-bottom:6px">'
+      +'<input id="scCity" type="text" placeholder="City *" style="flex:1;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:\'Jost\',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>'
+      +'<input id="scPincode" type="tel" placeholder="Pincode *" maxlength="6" style="width:110px;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:\'Jost\',sans-serif;font-size:13px;outline:none;box-sizing:border-box" oninput="lookupPincode(this.value)"/>'
+      +'</div>'
+      +'<select id="scState" onchange="lookupPincode(document.getElementById(\'scPincode\').value)" style="width:100%;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:\'Jost\',sans-serif;font-size:13px;outline:none;box-sizing:border-box;color:#5c3d1e">'
+      +'<option value="">Select State *</option>'
+      +'<option>Andhra Pradesh</option><option>Arunachal Pradesh</option><option>Assam</option>'
+      +'<option>Bihar</option><option>Chhattisgarh</option><option>Goa</option><option>Gujarat</option>'
+      +'<option>Haryana</option><option>Himachal Pradesh</option><option>Jharkhand</option>'
+      +'<option>Karnataka</option><option>Kerala</option><option>Madhya Pradesh</option>'
+      +'<option>Maharashtra</option><option>Manipur</option><option>Meghalaya</option>'
+      +'<option>Mizoram</option><option>Nagaland</option><option>Odisha</option>'
+      +'<option>Punjab</option><option>Rajasthan</option><option>Sikkim</option>'
+      +'<option>Tamil Nadu</option><option>Telangana</option><option>Tripura</option>'
+      +'<option>Uttar Pradesh</option><option>Uttarakhand</option><option>West Bengal</option>'
+      +'<option>Andaman and Nicobar Islands</option><option>Chandigarh</option>'
+      +'<option>Dadra and Nagar Haveli and Daman and Diu</option>'
+      +'<option>Delhi</option><option>Jammu and Kashmir</option><option>Ladakh</option>'
+      +'<option>Lakshadweep</option><option>Puducherry</option>'
+      +'</select>'
+      +'</div>'
+      +'<div id="scError" style="display:none;color:#c0392b;font-family:\'Jost\',sans-serif;font-size:12px;margin-bottom:12px"></div>'
+      +'<button onclick="submitSimpleCheckout()" style="width:100%;padding:13px;background:#7a1f2e;border:none;color:#faf5ec;font-family:\'Jost\',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer">Proceed to Payment</button>'
+      +'</div>'
+      +'<div style="height:2px;background:linear-gradient(90deg,transparent,#c9a24e,transparent)"></div>'
+      +'</div>';
     document.body.appendChild(modal);
   }
-  // Reset
   document.getElementById('scName').value = '';
   document.getElementById('scPhone').value = '';
   document.getElementById('scEmail').value = '';
+  ['scHouse','scArea','scCity','scPincode'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.value = '';
+  });
+  var st = document.getElementById('scState'); if(st) st.value = '';
   document.getElementById('scError').style.display = 'none';
+  var shipEl = document.getElementById('scShippingInfo');
+  if (shipEl) shipEl.remove();
   modal.style.display = 'flex';
   document.body.style.overflow = 'hidden';
   document.getElementById('scName').focus();
-  // Store callback
   modal._callback = callback;
 }
 
 function closeSimpleCheckout() {
-  const modal = document.getElementById('simpleCheckoutModal');
+  var modal = document.getElementById('simpleCheckoutModal');
   if (modal) modal.style.display = 'none';
   document.body.style.overflow = '';
 }
 
 function submitSimpleCheckout() {
-  const name  = document.getElementById('scName').value.trim();
-  const phone = document.getElementById('scPhone').value.trim();
-  const email = document.getElementById('scEmail').value.trim();
-  const errEl = document.getElementById('scError');
+  var name    = document.getElementById('scName').value.trim();
+  var phone   = document.getElementById('scPhone').value.trim();
+  var email   = document.getElementById('scEmail').value.trim();
+  var house   = document.getElementById('scHouse')   ? document.getElementById('scHouse').value.trim()   : '';
+  var area    = document.getElementById('scArea')    ? document.getElementById('scArea').value.trim()    : '';
+  var city    = document.getElementById('scCity')    ? document.getElementById('scCity').value.trim()    : '';
+  var pincode = document.getElementById('scPincode') ? document.getElementById('scPincode').value.trim() : '';
+  var state   = document.getElementById('scState')   ? document.getElementById('scState').value.trim()   : '';
+  var address = [house, area, city, state, pincode].filter(Boolean).join(', ');
+  var errEl   = document.getElementById('scError');
 
-  if (!name) {
-    errEl.textContent = 'Please enter your name.';
-    errEl.style.display = 'block'; return;
-  }
-  if (!/^[6-9]\d{9}$/.test(phone)) {
-    errEl.textContent = 'Please enter a valid 10-digit Indian mobile number.';
-    errEl.style.display = 'block'; return;
-  }
-  if (email && !/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
-    errEl.textContent = 'Please enter a valid email address.';
-    errEl.style.display = 'block'; return;
-  }
+  if (!name) { errEl.textContent = 'Please enter your name.'; errEl.style.display = 'block'; return; }
+  if (!/^[6-9]\d{9}$/.test(phone)) { errEl.textContent = 'Please enter a valid 10-digit Indian mobile number.'; errEl.style.display = 'block'; return; }
+  if (email && !/^[^@]+@[^@]+\.[^@]+$/.test(email)) { errEl.textContent = 'Please enter a valid email address.'; errEl.style.display = 'block'; return; }
+  if (!city)  { errEl.textContent = 'Please enter your city.'; errEl.style.display = 'block'; return; }
+  if (!state) { errEl.textContent = 'Please select your state.'; errEl.style.display = 'block'; return; }
+  if (!pincode || !/^\d{6}$/.test(pincode)) { errEl.textContent = 'Please enter a valid 6-digit pincode.'; errEl.style.display = 'block'; return; }
+
   errEl.style.display = 'none';
   closeSimpleCheckout();
-  const modal = document.getElementById('simpleCheckoutModal');
+  var modal = document.getElementById('simpleCheckoutModal');
   if (modal && modal._callback) {
-    modal._callback({ name, phone: '91' + phone, email });
+    modal._callback({ name:name, phone:'91'+phone, email:email, address:address, shipping:window._checkoutShipping||0, distKm:window._checkoutDistKm||0, shippingLabel:window._checkoutShipLabel||'Free Delivery' });
   }
 }
 
@@ -1009,7 +1580,7 @@ async function logPaymentAttempt(data) {
 async function _processBuyNow(customer) {
   if (!_modalProduct) return;
   const product = _modalProduct;
-  const amount  = product.price * 100; // paise
+  const amount  = (product.price * 100) + ((window._checkoutShipping || 0) * 100); // paise incl. shipping
   const apiBase = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://localhost:5000' : '';
 
@@ -1048,9 +1619,10 @@ async function _processBuyNow(customer) {
             amount:              order.amount,
             product_id:          product.id,
             product_name:        product.name,
-            customer_name:       customer.name  || response.name    || '',
-            customer_email:      customer.email || response.email   || '',
-            customer_phone:      customer.phone || response.contact || ''
+            customer_name:       customer.name    || response.name    || '',
+            customer_email:      customer.email   || response.email   || '',
+            customer_phone:      customer.phone   || response.contact || '',
+            customer_address:    customer.address || ''
           })
         });
         const result = await verify.json();
