@@ -651,7 +651,7 @@
       <div class="wa-form-box reveal delay-2">
         <h3 style="font-family:var(--font-display);font-size:1.7rem;font-weight:300;color:var(--maroon-deep);margin-bottom:6px">Send Us a Message</h3>
         <p style="font-family:var(--font-body);font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:var(--taupe);margin-bottom:28px">We'll respond within 2 hours</p>
-        <div class="form-group"><label class="form-label">Your Name</label><input type="text" id="cName" class="form-input" temp="e.g. Priya Sharma"/></div>
+        <div class="form-group"><label class="form-label">Your Name</label><input type="text" id="cName" class="form-input" placeholder="e.g. Priya Sharma"/></div>
         <div class="form-group"><label class="form-label">WhatsApp Number</label><input type="tel" id="cPhone" class="form-input" placeholder="+91 98765 43210"/></div>
         <div class="form-group">
           <label class="form-label">Occasion</label>
@@ -663,7 +663,9 @@
           </select>
         </div>
         <div class="form-group"><label class="form-label">Tell Us About Your Dream Look</label><textarea id="cMsg" class="form-input form-textarea" placeholder="Describe your occasion, preferred colours, fabric preferences…"></textarea></div>
-        <button class="btn-primary" style="width:100%;justify-content:center" onclick="sendViaWhatsApp()"><span>Send Enquiry</span> <span class="arrow">→</span></button>
+        <button class="btn-primary" style="width:100%;justify-content:center" onclick="sendEnquiryDirect(this)"><span>Send Enquiry</span> <span class="arrow">→</span></button>
+        <div id="enquirySuccessBar" style="height:3px;background:#2ea043;width:0;transition:width 2s linear;margin-top:10px"></div>
+        <div id="enquirySuccessMsg" style="display:none;font-family:'Jost',sans-serif;font-size:12px;color:#2ea043;padding:8px 0;text-align:center">✔ Enquiry submitted! We will reach out to you shortly.</div>
       </div>
     </div>
   </div>
@@ -752,7 +754,7 @@
   document.getElementById('navPlaceholder').outerHTML = injectNav('Home', true);
   document.getElementById('footerPlaceholder').outerHTML = injectFooter(true);
   // Razorpay public key — safe to expose in frontend
-  window.__RAZORPAY_KEY = 'rzp_test_TJijg2rO6pSK90';
+  window.__RAZORPAY_KEY = 'rzp_test_TL0rrKLE69HPMA';
 
   function observeNew(root) {
     root.querySelectorAll('.reveal:not(.visible)').forEach(r => {
@@ -849,6 +851,53 @@
              onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#EAD9C4,#6B1A2A44)'"/>
         <div class="gallery-overlay">&#9825;</div>
       </div>`).join('');
+  }
+
+  async function sendEnquiryDirect(btn) {
+    const name  = (document.getElementById('cName')?.value || '').trim();
+    const phone = (document.getElementById('cPhone')?.value || '').trim();
+    const msg   = (document.getElementById('cMsg')?.value || '').trim();
+    const occ   = document.getElementById('cOccasion')?.value || '';
+    if (!name)  { alert('Please enter your name.'); return; }
+    if (!phone) { alert('Please enter your WhatsApp number.'); return; }
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://localhost:5000' : '';
+    try {
+      const r = await fetch(base + '/api/inquiries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: 0, product_name: 'Style Consultation',
+          category: 'contact', price: 0,
+          customer_name: name, customer_phone: phone,
+          occasion: occ, message: msg, type: 'contact'
+        })
+      });
+      const data = await r.json();
+      if (data.ok) {
+        document.getElementById('cName').value = '';
+        document.getElementById('cPhone').value = '';
+        document.getElementById('cMsg').value = '';
+        if (document.getElementById('cOccasion')) document.getElementById('cOccasion').value = '';
+        const bar  = document.getElementById('enquirySuccessBar');
+        const msg2 = document.getElementById('enquirySuccessMsg');
+        if (msg2) msg2.style.display = 'block';
+        if (bar)  { bar.style.transition = 'width 2s linear'; bar.style.width = '100%'; }
+        setTimeout(() => {
+          if (bar)  bar.style.width = '0';
+          if (msg2) msg2.style.display = 'none';
+        }, 120000);
+      } else {
+        alert('Submission failed. Please try again.');
+      }
+    } catch(e) {
+      console.error('Enquiry error:', e);
+      alert('Could not connect to server. Please try WhatsApp directly.');
+    }
+    btn.disabled = false;
+    btn.style.opacity = '1';
   }
 
   function swapLook(thumb, src) {

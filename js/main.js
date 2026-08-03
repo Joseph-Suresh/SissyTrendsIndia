@@ -286,6 +286,13 @@ function renderCartDrawer(){
 }
 
 async function checkoutCart(){
+  const items=getCartItems(); if(!items.length) return;
+  openCheckoutModal(async function(customer) {
+    await _processCartCheckout(customer);
+  });
+}
+
+async function _processCartCheckout(customer){
   var items=getCartItems(); if(!items.length) return;
   var total=cartTotal(), amount=total*100;
   var base=(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:5000':'';
@@ -296,15 +303,25 @@ async function checkoutCart(){
     if(!order.id){alert('Could not initiate payment.');return;}
     new window.Razorpay({
       key:window.__RAZORPAY_KEY||'', amount:order.amount, currency:order.currency,
-      name:'SissyTrends', description:items.length+' item(s)', order_id:order.id,
+      name:'SissyTrends', description:items.length+' item(s) | '+customer.name, order_id:order.id,
       handler:async function(r){
         var v=await fetch(base+'/api/razorpay/verify',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify(Object.assign({},r,{amount:order.amount,product_id:0,product_name:items.map(function(i){return i.name;}).join(', ')}))});
+          body:JSON.stringify(Object.assign({},r,{amount:order.amount,product_id:0,product_name:items.map(function(i){return i.name;}).join(', '),customer_name:customer.name||r.name||'',customer_email:customer.email||r.email||'',customer_phone:customer.phone||r.contact||''}))});
         var res2=await v.json();
-        if(res2.ok){saveCartItems([]);updateCartBadge();closeCartDrawer();showToast('Payment successful! We will contact you shortly.');}
+        if(res2.ok){
+          saveCartItems([]); updateCartBadge(); closeCartDrawer();
+          showOrderComplete({
+            order_id:      r.razorpay_order_id,
+            payment_id:    r.razorpay_payment_id,
+            product_name:  items.map(function(i){return i.name;}).join(', '),
+            amount:        order.amount,
+            customer_name: customer.name,
+            customer_phone: customer.phone
+          });
+        }
         else alert('Payment verification failed. Please contact us on WhatsApp.');
       },
-      prefill:{name:'',email:'',contact:''}, theme:{color:'#c9a24e'}
+      prefill:{name:customer.name,email:customer.email,contact:customer.phone}, theme:{color:'#c9a24e'}
     }).open();
   } catch(e){ alert('Payment unavailable. Please enquire on WhatsApp.'); }
 }
@@ -602,7 +619,282 @@ function shareProduct() {
 }
 
 // ── Razorpay Buy Now ─────────────────────────────────────────────
+
+// ── Pre-checkout customer details modal ──────────────────────────
+let _checkoutCallback = null; // called with customer details after OTP verified
+let _otpSent = false;
+let _otpResendTimer = null;
+
+function openCheckoutModal(callback) {
+  _checkoutCallback = callback;
+  _otpSent = false;
+
+  // Create modal if not exists
+  let modal = document.getElementById('checkoutModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'checkoutModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = `
+      <div style="background:#faf5ec;max-width:440px;width:100%;position:relative;border:1px solid rgba(201,162,78,.3);animation:fadeSlideUp .3s ease">
+        <div style="height:4px;background:linear-gradient(90deg,#7a1f2e,#c9a24e,#7a1f2e)"></div>
+        <div style="padding:32px">
+          <button onclick="closeCheckoutModal()" style="position:absolute;top:12px;right:16px;background:none;border:none;font-size:22px;cursor:pointer;color:rgba(122,31,46,.4);line-height:1">&times;</button>
+          <div style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:.25em;color:#c9a24e;margin-bottom:12px">SECURE CHECKOUT</div>
+          <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;font-weight:400;color:#7a1f2e;margin-bottom:6px">Your Details</h3>
+          <p style="font-family:'Jost',sans-serif;font-size:12px;color:#8c7b6b;margin-bottom:24px">Please provide your details to complete the order.</p>
+
+          <div id="checkoutStep1">
+            <div style="margin-bottom:14px">
+              <label style="display:block;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:6px">Full Name *</label>
+              <input id="coName" type="text" placeholder="e.g. Priya Sharma"
+                style="width:100%;padding:10px 14px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:'Jost',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>
+            </div>
+            <div style="margin-bottom:14px">
+              <label style="display:block;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:6px">Email Address <span style="color:#aaa;font-size:9px">(optional)</span></label>
+              <input id="coEmail" type="email" placeholder="e.g. priya@email.com"
+                style="width:100%;padding:10px 14px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:'Jost',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>
+            </div>
+            <div style="margin-bottom:20px">
+              <label style="display:block;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:6px">Mobile Number *</label>
+              <div style="display:flex;gap:8px">
+                <span style="padding:10px 12px;background:#f0ebe0;border:1px solid rgba(201,162,78,.3);font-family:'Jost',sans-serif;font-size:13px;color:#5c3d1e">+91</span>
+                <input id="coPhone" type="tel" placeholder="10-digit mobile number" maxlength="10"
+                  style="flex:1;padding:10px 14px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:'Jost',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>
+              </div>
+            </div>
+            <div id="coError" style="display:none;color:#c0392b;font-family:'Jost',sans-serif;font-size:12px;margin-bottom:12px"></div>
+            <button onclick="sendOTP()"
+              style="width:100%;padding:13px;background:#7a1f2e;border:none;color:#faf5ec;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer">
+              Send OTP
+            </button>
+          </div>
+
+          <div id="checkoutStep2" style="display:none">
+            <p style="font-family:'Jost',sans-serif;font-size:13px;color:#5c3d1e;margin-bottom:20px">
+              We sent a 6-digit OTP to <strong id="coPhoneDisplay"></strong>.<br>
+              <span style="font-size:12px;color:#8c7b6b">Please enter it below to continue.</span>
+            </p>
+            <div style="margin-bottom:20px">
+              <label style="display:block;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:6px">Enter OTP</label>
+              <input id="coOTP" type="tel" maxlength="6" placeholder="6-digit OTP"
+                style="width:100%;padding:12px 14px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:'Jost',sans-serif;font-size:18px;letter-spacing:.3em;text-align:center;outline:none;box-sizing:border-box"/>
+            </div>
+            <div id="coOTPError" style="display:none;color:#c0392b;font-family:'Jost',sans-serif;font-size:12px;margin-bottom:12px"></div>
+            <button onclick="verifyOTP()"
+              style="width:100%;padding:13px;background:#7a1f2e;border:none;color:#faf5ec;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer;margin-bottom:10px">
+              Verify &amp; Pay
+            </button>
+            <button onclick="resendOTP()" id="coResendBtn"
+              style="width:100%;padding:10px;background:none;border:1px solid rgba(201,162,78,.3);color:#c9a24e;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">
+              Resend OTP (<span id="coResendTimer">30</span>s)
+            </button>
+          </div>
+        </div>
+        <div style="height:2px;background:linear-gradient(90deg,transparent,#c9a24e,transparent)"></div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  // Reset to step 1
+  document.getElementById('checkoutStep1').style.display = 'block';
+  document.getElementById('checkoutStep2').style.display = 'none';
+  document.getElementById('coError').style.display = 'none';
+  document.getElementById('coOTPError') && (document.getElementById('coOTPError').style.display = 'none');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  document.getElementById('coName').focus();
+}
+
+function closeCheckoutModal() {
+  const modal = document.getElementById('checkoutModal');
+  if (modal) modal.style.display = 'none';
+  document.body.style.overflow = '';
+  if (_otpResendTimer) { clearInterval(_otpResendTimer); _otpResendTimer = null; }
+}
+
+async function sendOTP() {
+  const name  = document.getElementById('coName').value.trim();
+  const email = document.getElementById('coEmail').value.trim();
+  const phone = document.getElementById('coPhone').value.trim();
+  const errEl = document.getElementById('coError');
+
+  // Validate
+  if (!name) { errEl.textContent = 'Please enter your name.'; errEl.style.display = 'block'; return; }
+  if (email && !/^[^@]+@[^@]+\.[^@]+$/.test(email)) { errEl.textContent = 'Please enter a valid email address.'; errEl.style.display = 'block'; return; }
+  if (!/^[6-9]\d{9}$/.test(phone)) { errEl.textContent = 'Please enter a valid 10-digit Indian mobile number.'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+
+  const btn = document.querySelector('#checkoutStep1 button');
+  btn.textContent = 'Sending OTP...'; btn.disabled = true;
+
+  const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : '';
+  try {
+    const r = await fetch(base + '/api/otp/send', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ phone: '91' + phone })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      document.getElementById('checkoutStep1').style.display = 'none';
+      document.getElementById('checkoutStep2').style.display = 'block';
+      document.getElementById('coPhoneDisplay').textContent = '+91 ' + phone;
+      document.getElementById('coOTP').focus();
+      startResendTimer();
+    } else {
+      errEl.textContent = data.error || 'Failed to send OTP. Please try again.';
+      errEl.style.display = 'block';
+    }
+  } catch {
+    errEl.textContent = 'Could not connect. Please try again.';
+    errEl.style.display = 'block';
+  }
+  btn.textContent = 'Send OTP'; btn.disabled = false;
+}
+
+async function verifyOTP() {
+  const otp    = document.getElementById('coOTP').value.trim();
+  const phone  = document.getElementById('coPhone').value.trim();
+  const errEl  = document.getElementById('coOTPError');
+
+  if (!/^\d{6}$/.test(otp)) { errEl.textContent = 'Please enter the 6-digit OTP.'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+
+  const btn = document.querySelector('#checkoutStep2 button');
+  btn.textContent = 'Verifying...'; btn.disabled = true;
+
+  const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : '';
+  try {
+    const r = await fetch(base + '/api/otp/verify', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ phone: '91' + phone, otp })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      closeCheckoutModal();
+      if (_checkoutCallback) {
+        _checkoutCallback({
+          name:  document.getElementById('coName').value.trim(),
+          email: document.getElementById('coEmail').value.trim(),
+          phone: '91' + phone
+        });
+      }
+    } else {
+      errEl.textContent = data.error || 'Invalid OTP. Please try again.';
+      errEl.style.display = 'block';
+    }
+  } catch {
+    errEl.textContent = 'Verification failed. Please try again.';
+    errEl.style.display = 'block';
+  }
+  btn.textContent = 'Verify & Pay'; btn.disabled = false;
+}
+
+function startResendTimer() {
+  let secs = 30;
+  const timerEl  = document.getElementById('coResendTimer');
+  const resendBtn = document.getElementById('coResendBtn');
+  resendBtn.disabled = true; resendBtn.style.opacity = '0.5';
+  _otpResendTimer = setInterval(() => {
+    secs--;
+    if (timerEl) timerEl.textContent = secs;
+    if (secs <= 0) {
+      clearInterval(_otpResendTimer); _otpResendTimer = null;
+      resendBtn.disabled = false; resendBtn.style.opacity = '1';
+      resendBtn.innerHTML = 'Resend OTP';
+    }
+  }, 1000);
+}
+
+async function resendOTP() {
+  const phone = document.getElementById('coPhone').value.trim();
+  const base  = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : '';
+  const btn   = document.getElementById('coResendBtn');
+  btn.disabled = true; btn.innerHTML = 'Sending...';
+  await fetch(base + '/api/otp/send', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: '91' + phone })
+  });
+  startResendTimer();
+}
+
+
+// ── Order Complete Popup ──────────────────────────────────────────
+function showOrderComplete(details) {
+  // details: { order_id, payment_id, product_name, amount, customer_name, customer_phone }
+  let popup = document.getElementById('orderCompletePopup');
+  if (!popup) {
+    popup = document.createElement('div');
+    popup.id = 'orderCompletePopup';
+    popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+    document.body.appendChild(popup);
+  }
+  const amt = details.amount ? '\u20b9' + Math.round(details.amount / 100).toLocaleString() : '';
+  popup.innerHTML = `
+    <div style="background:#faf5ec;max-width:480px;width:100%;position:relative;animation:fadeSlideUp .35s ease;border:1px solid rgba(201,162,78,.3)">
+      <div style="height:4px;background:linear-gradient(90deg,#7a1f2e,#c9a24e,#7a1f2e)"></div>
+      <div style="padding:36px 32px">
+        <!-- Success icon -->
+        <div style="text-align:center;margin-bottom:20px">
+          <div style="width:64px;height:64px;background:linear-gradient(135deg,#2ea043,#27ae60);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:400;color:#7a1f2e;margin-bottom:4px">Order Confirmed!</h2>
+          <p style="font-family:'Jost',sans-serif;font-size:12px;color:#8c7b6b">Thank you for shopping with SissyTrends</p>
+        </div>
+
+        <!-- Order details -->
+        <div style="background:#f5ede0;border:1px solid rgba(201,162,78,.2);padding:18px;margin-bottom:20px">
+          <div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.25em;color:#c9a24e;margin-bottom:12px">ORDER DETAILS</div>
+          ${details.product_name ? `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(201,162,78,.15)"><span style="font-family:'Jost',sans-serif;font-size:12px;color:#8c7b6b">Product</span><span style="font-family:'Jost',sans-serif;font-size:12px;color:#5c3d1e;max-width:60%;text-align:right">${details.product_name}</span></div>` : ''}
+          ${amt ? `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(201,162,78,.15)"><span style="font-family:'Jost',sans-serif;font-size:12px;color:#8c7b6b">Amount Paid</span><span style="font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:#7a1f2e;font-weight:600">${amt}</span></div>` : ''}
+          ${details.payment_id ? `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(201,162,78,.15)"><span style="font-family:'Jost',sans-serif;font-size:12px;color:#8c7b6b">Payment ID</span><span style="font-family:'Jost',sans-serif;font-size:11px;color:#5c3d1e">${details.payment_id}</span></div>` : ''}
+          ${details.order_id ? `<div style="display:flex;justify-content:space-between;padding:6px 0"><span style="font-family:'Jost',sans-serif;font-size:12px;color:#8c7b6b">Order ID</span><span style="font-family:'Jost',sans-serif;font-size:11px;color:#5c3d1e">${details.order_id}</span></div>` : ''}
+        </div>
+
+        <!-- Contact info -->
+        <div style="background:#fff8f0;border:1px solid rgba(201,162,78,.2);padding:18px;margin-bottom:24px">
+          <div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.25em;color:#c9a24e;margin-bottom:12px">CONTACT US</div>
+          <p style="font-family:'Jost',sans-serif;font-size:12px;color:#5c3d1e;margin-bottom:10px">Our team will reach out to you shortly regarding your order. For any queries:</p>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <a href="https://wa.me/919344182144?text=Hi!%20I%20just%20placed%20an%20order%20(${details.payment_id||''})%20on%20SissyTrends"
+               target="_blank"
+               style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#25d366;color:#fff;text-decoration:none;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.1em;text-transform:uppercase">
+              <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.528 5.84L.057 23.5l5.797-1.499A11.938 11.938 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.854 0-3.6-.497-5.11-1.367l-.366-.218-3.44.889.921-3.32-.239-.384A9.955 9.955 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+              WhatsApp Us
+            </a>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:#f0ebe0;font-family:'Jost',sans-serif;font-size:12px;color:#5c3d1e">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c9a24e" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+              +91 93441 82144
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:#f0ebe0;font-family:'Jost',sans-serif;font-size:12px;color:#5c3d1e">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c9a24e" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              sissytrends@gmail.com
+            </div>
+          </div>
+        </div>
+
+        <button onclick="document.getElementById('orderCompletePopup').style.display='none';document.body.style.overflow='';"
+          style="width:100%;padding:13px;background:#7a1f2e;border:none;color:#faf5ec;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer">
+          Continue Shopping
+        </button>
+      </div>
+      <div style="height:2px;background:linear-gradient(90deg,transparent,#c9a24e,transparent)"></div>
+    </div>`;
+  popup.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
 async function buyNow() {
+  if (!_modalProduct) return;
+  openCheckoutModal(async function(customer) {
+    await _processBuyNow(customer);
+  });
+}
+
+async function _processBuyNow(customer) {
   if (!_modalProduct) return;
   const product = _modalProduct;
   const amount  = product.price * 100; // paise
@@ -629,7 +921,7 @@ async function buyNow() {
       amount:      order.amount,
       currency:    order.currency,
       name:        'SissyTrends',
-      description: product.name,
+      description: product.name + ' | ' + customer.name,
       image:       product.img ? (apiBase + product.img) : '',
       order_id:    order.id,
       handler: async function(response) {
@@ -643,7 +935,10 @@ async function buyNow() {
             razorpay_signature:  response.razorpay_signature,
             amount:              order.amount,
             product_id:          product.id,
-            product_name:        product.name
+            product_name:        product.name,
+            customer_name:       customer.name  || response.name    || '',
+            customer_email:      customer.email || response.email   || '',
+            customer_phone:      customer.phone || response.contact || ''
           })
         });
         const result = await verify.json();
@@ -654,7 +949,7 @@ async function buyNow() {
           alert('Payment verification failed. Please contact us on WhatsApp.');
         }
       },
-      prefill: { name: '', email: '', contact: '' },
+      prefill: { name: customer.name, email: customer.email, contact: customer.phone },
       method: { upi: true, card: true, netbanking: true, wallet: true },
       theme:   { color: '#c9a24e' },
     };
@@ -671,12 +966,21 @@ async function buyNow() {
 
 function enquireOnWhatsApp() {
   if (!_modalProduct) return;
-  logInquiry(_modalProduct);
   const p    = _modalProduct;
-  const text = encodeURIComponent(
-    `Hi SissyTrends! I'm interested in this piece.\n\nProduct: ${p.name}\nID: ${p.productId||'—'}\nCategory: ${p.category}\nPrice: ₹${p.price.toLocaleString()}`
-  );
-  window.open(`${BRAND.whatsapp}?text=${text}`, '_blank');
+  const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : '';
+  fetch(base + '/api/inquiries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      product_id:   p.id,
+      product_name: p.name,
+      category:     p.category,
+      price:        p.price,
+      type:         'product'
+    })
+  }).then(r => r.json()).then(data => {
+    if (data.ok) showToast('\u2714 Enquiry sent! We will contact you shortly.');
+  }).catch(() => {});
 }
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(true); });
@@ -886,12 +1190,14 @@ function renderProductCard(product, delay = 0) {
 }
 
 /* ── Contact form ── */
-function sendViaWhatsApp() {
-  const name  = document.getElementById('cName')?.value || 'A visitor';
-  const phone = document.getElementById('cPhone')?.value || '';
-  const msg   = document.getElementById('cMsg')?.value || '';
+async function sendViaWhatsApp() {
+  const name  = document.getElementById('cName')?.value.trim() || '';
+  const phone = document.getElementById('cPhone')?.value.trim() || '';
+  const msg   = document.getElementById('cMsg')?.value.trim() || '';
   const occ   = document.getElementById('cOccasion')?.value || '';
-  const text  = encodeURIComponent(`🌺 Hello SissyTrends Boutique!\n\nName: ${name}\nPhone: ${phone}${occ?'\nOccasion: '+occ:''}\nMessage: ${msg}`);
+  if (!name) { alert('Please enter your name.'); return; }
+  if (!phone) { alert('Please enter your WhatsApp number.'); return; }
+  const text = encodeURIComponent(`🌺 Hello SissyTrends Boutique!\n\nName: ${name}\nPhone: ${phone}${occ?'\nOccasion: '+occ:''}${msg?'\nMessage: '+msg:''}`);
   window.open(`${BRAND.whatsapp}?text=${text}`, '_blank');
 }
 

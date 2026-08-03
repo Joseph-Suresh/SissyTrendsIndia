@@ -150,7 +150,7 @@
         <button class="admin-tab" onclick="switchTab('products')">Products</button>
         <button class="admin-tab" onclick="switchTab('add')">+ Add Product</button>
         <button class="admin-tab" onclick="switchTab('analytics')">📊 Analytics</button>
-        <button class="admin-tab" onclick="switchTab('inquiries')">&#128172; Inquiries</button>
+        <button class="admin-tab" onclick="switchTab('inquiries')">&#128172; Inquiries <span id="inqBadge" style="display:none;background:#c0392b;color:#fff;font-size:9px;padding:1px 6px;border-radius:10px;margin-left:4px">0</span></button>
         <button class="admin-tab" onclick="switchTab('orders')">&#128179; Orders</button>
       </div>
       <div style="display:flex;align-items:center;gap:16px">
@@ -433,14 +433,66 @@ function switchTab(name) {
   });
   document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
   document.getElementById(`tab-${name}`).classList.add('active');
-  if (name === 'dashboard') loadProducts().then(renderDashboard);
+  if (name === 'dashboard') {
+    loadProducts().then(renderDashboard);
+    loadSMSStats();
+  }
   if (name === 'products')  loadProducts().then(() => renderProductsTable('all'));
   if (name === 'analytics') loadAndRenderAnalytics();
-  if (name === 'inquiries') loadAndRenderInquiries();
+  if (name === 'inquiries') {
+    loadAndRenderInquiries();
+    // Mark all as seen
+    localStorage.setItem('inq_seen_count', document.getElementById('inqBadge')?.textContent || '0');
+    document.getElementById('inqBadge').style.display = 'none';
+  }
   if (name === 'orders')    loadAndRenderOrders();
 }
 
 /* ── Dashboard ── */
+// ── Inquiry notification badge ──────────────────────────────────
+async function checkNewInquiries() {
+  try {
+    const r    = await fetch(`${API}/inquiries`);
+    const inqs = await r.json();
+    const total = inqs.length;
+    const seen  = parseInt(localStorage.getItem('inq_seen_count') || '0');
+    const newCount = Math.max(0, total - seen);
+    const badge = document.getElementById('inqBadge');
+    if (badge) {
+      badge.textContent = newCount;
+      badge.style.display = newCount > 0 ? 'inline' : 'none';
+    }
+  } catch {}
+}
+// Check on load and every 30 seconds
+checkNewInquiries();
+setInterval(checkNewInquiries, 30000);
+
+async function loadSMSStats() {
+  try {
+    const r = await fetch(`${API}/otp/sms-stats`);
+    const s = await r.json();
+    const el = document.getElementById('smsStatsWidget');
+    if (!el) return;
+    const pct     = Math.round((s.daily_count / s.daily_limit) * 100);
+    const color   = s.daily_count >= 38 ? '#c0392b' : s.daily_count >= 35 ? '#e67e22' : '#2ea043';
+    const barColor= s.daily_count >= 38 ? '#c0392b' : s.daily_count >= 35 ? '#e67e22' : '#c9a24e';
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:rgba(250,245,236,.5)">SMS OTP Today</span>
+        <span style="font-family:'Jost',sans-serif;font-size:11px;color:${color};font-weight:600">${s.daily_count}/${s.daily_limit}</span>
+      </div>
+      <div style="background:rgba(250,245,236,.1);height:4px;border-radius:2px;margin-bottom:6px">
+        <div style="background:${barColor};height:4px;border-radius:2px;width:${pct}%;transition:width .4s"></div>
+      </div>
+      <div style="font-family:'Jost',sans-serif;font-size:11px;color:rgba(250,245,236,.4)">
+        ${s.remaining} remaining &bull; Total ever: ${s.total_sent||0}
+        ${s.warning ? '<br><span style="color:#e67e22;font-size:10px">&#9888; Approaching daily limit</span>' : ''}
+        ${s.daily_count >= 38 ? '<br><span style="color:#c0392b;font-size:10px">&#10060; Daily limit reached — OTP via terminal only</span>' : ''}
+      </div>`;
+  } catch { /* silently fail */ }
+}
+
 function renderDashboard() {
   const products = getProducts();
   const stats = [
@@ -452,6 +504,17 @@ function renderDashboard() {
   document.getElementById('statsGrid').innerHTML = stats.map(s =>
     `<div class="stat-card"><div class="stat-num">${s.num}</div><div class="stat-label">${s.label}</div></div>`
   ).join('');
+  // Add SMS stats widget after stats grid
+  const statsGrid = document.getElementById('statsGrid');
+  if (statsGrid && !document.getElementById('smsStatsWidget')) {
+    const smsCard = document.createElement('div');
+    smsCard.id = 'smsStatsWidget';
+    smsCard.className = 'stat-card';
+    smsCard.style.textAlign = 'left';
+    smsCard.innerHTML = '<div style="color:rgba(250,245,236,.3);font-size:12px">Loading SMS stats...</div>';
+    statsGrid.appendChild(smsCard);
+  }
+  loadSMSStats();
   document.getElementById('recentTableBody').innerHTML = [...products].slice(-6).reverse().map(p => `
     <tr>
       <td><img src="${resolveImg(p.img)}" alt="${p.name}" onerror="this.parentElement.style.background='linear-gradient(135deg,#2D2520,#8B7355)';this.style.display='none'"/></td>
@@ -716,14 +779,19 @@ async function loadAndRenderInquiries() {
       </div>
       <div class="table-wrap">
         <table class="product-table">
-          <thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Date</th></tr></thead>
-          <tbody>${inqs.map(i => `<tr>
-            <td style="color:#faf5ec">${i.product_name||'—'}<br/><span style="font-size:10px;color:rgba(201,162,78,.4)">#${i.product_id||'—'}</span></td>
-            <td><span class="badge-pill">${i.category||'—'}</span></td>
-            <td style="color:#c9a24e">₹${(i.price||0).toLocaleString()}</td>
-            <td style="font-size:11px;color:rgba(250,245,236,.4)">${(i.created_at||'').substring(0,16).replace('T',' ')}</td>
-          </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:40px;color:rgba(250,245,236,.3)">No inquiries yet.</td></tr>'}
-          </tbody>
+          <thead><tr><th>Type</th><th>Product / Subject</th><th>Customer</th><th>Phone</th><th>Occasion</th><th>Message</th><th>Date</th></tr></thead>
+          <tbody>${inqs.length === 0
+            ? '<tr><td colspan="7" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No inquiries yet.</td></tr>'
+            : inqs.map(i => `<tr>
+            <td><span class="badge-pill" style="background:${i.type==='contact'?'rgba(201,162,78,.15)':'rgba(107,26,42,.3)'}">${i.type==='contact'?'Contact':'Product'}</span></td>
+            <td style="color:#faf5ec;max-width:160px">${i.product_name||'—'}<br/><span style="font-size:10px;color:rgba(201,162,78,.4)">${i.price&&i.price>0?'&#8377;'+i.price.toLocaleString():''}</span></td>
+            <td style="color:#faf5ec;font-size:12px">${i.customer_name||'—'}</td>
+            <td style="color:rgba(250,245,236,.6);font-size:12px">${i.customer_phone||'—'}</td>
+            <td style="color:rgba(201,162,78,.6);font-size:12px">${i.occasion||'—'}</td>
+            <td style="color:rgba(250,245,236,.5);font-size:12px;max-width:200px">${i.message||'—'}</td>
+            <td style="font-size:11px;color:rgba(250,245,236,.4);white-space:nowrap">${(i.created_at||'').substring(0,16).replace('T',' ')}</td>
+          </tr>`).join('')
+          }</tbody>
         </table>
       </div>`;
   } catch { tabEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(220,80,80,.6)">Could not load inquiries.</div>'; }
@@ -753,13 +821,15 @@ async function loadAndRenderOrders() {
       </div>
       <div class="table-wrap">
         <table class="product-table">
-          <thead><tr><th>Order ID</th><th>Payment ID</th><th>Product</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+          <thead><tr><th>Order ID</th><th>Payment ID</th><th>Product</th><th>Customer</th><th>Phone</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
           <tbody>${orders.length === 0
-            ? '<tr><td colspan="6" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No orders yet.</td></tr>'
+            ? '<tr><td colspan="8" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No orders yet.</td></tr>'
             : orders.map(o => `<tr>
               <td style="color:#c9a24e;font-size:11px">${o.order_id||'—'}</td>
               <td style="color:rgba(250,245,236,.5);font-size:11px">${o.payment_id||'—'}</td>
               <td style="color:#faf5ec">${o.product_name||'—'}</td>
+              <td style="color:#faf5ec;font-size:12px">${o.customer_name||'—'}<br><span style="color:rgba(250,245,236,.4);font-size:11px">${o.customer_email||''}</span></td>
+              <td style="color:rgba(250,245,236,.6);font-size:12px">${o.customer_phone||'—'}</td>
               <td style="color:#c9a24e;font-weight:600">&#8377;${((o.amount||0)/100).toLocaleString()}</td>
               <td><span style="color:#2ea043;font-size:11px">&#10003; Paid</span></td>
               <td style="font-size:11px;color:rgba(250,245,236,.4)">${(o.created_at||'').substring(0,16).replace('T',' ')}</td>

@@ -310,6 +310,14 @@ class Handler(BaseHTTPRequestHandler):
             send_json(self, [row_to_dict(r) for r in rows], 201)
             return
 
+        elif path == '/api/orders':
+            with get_db() as db:
+                try:
+                    rows = db.execute('SELECT * FROM orders ORDER BY created_at DESC').fetchall()
+                    send_json(self, [row_to_dict(r) for r in rows])
+                except:
+                    send_json(self, [])
+
         else:
             self._serve_file(p.path)
 
@@ -461,6 +469,101 @@ class Handler(BaseHTTPRequestHandler):
 
         body = read_body(self)
 
+        if path == '/api/otp/send':
+            import random, time, urllib.request as _ur, urllib.parse as _up, datetime as _dt
+            phone = body.get('phone', '')
+            if not phone or len(phone) < 10:
+                send_json(self, {'error': 'Invalid phone number'}, 400); return
+            otp = str(random.randint(100000, 999999))
+            if not hasattr(Handler, '_otp_store'): Handler._otp_store = {}
+            Handler._otp_store[phone] = {'otp': otp, 'expires': time.time() + 600}
+
+            # Track daily SMS count
+            today = _dt.date.today().isoformat()
+            with get_db() as db:
+                db.execute("""CREATE TABLE IF NOT EXISTS sms_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT NOT NULL, phone TEXT,
+                    status TEXT DEFAULT 'sent',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
+                db.execute('INSERT INTO sms_log (date, phone) VALUES (?,?)', (today, phone[-10:]))
+                daily_count = db.execute(
+                    'SELECT COUNT(*) FROM sms_log WHERE date=?', (today,)
+                ).fetchone()[0]
+
+            # Warn at 35+ via WhatsApp
+            wa_num = os.environ.get('WHATSAPP_BUSINESS_NUMBER', '')
+            if daily_count >= 35 and wa_num:
+                remaining = max(0, 38 - daily_count)
+                msg = f'*SMS Limit Warning!*%0AOnly {remaining} free SMS remaining today.%0ADate: {today}%0AUpgrade fast2sms plan if needed.'
+                print(f'SMS LIMIT WARNING ({daily_count}/38): https://wa.me/{wa_num}?text={msg}')
+
+            api_key = os.environ.get('FAST2SMS_API_KEY', '')
+            if api_key and daily_count <= 38:
+                try:
+                    url = 'https://www.fast2sms.com/dev/bulkV2'
+                    params = _up.urlencode({
+                        'authorization': api_key,
+                        'variables_values': otp,
+                        'route': 'otp',
+                        'numbers': phone[-10:],
+                    })
+                    req = _ur.Request(f'{url}?{params}')
+                    req.add_header('cache-control', 'no-cache')
+                    with _ur.urlopen(req, timeout=10) as r:
+                        r.read()
+                    print(f'OTP sent to {phone}: {otp} | SMS count today: {daily_count}/38')
+                    send_json(self, {'ok': True, 'sms_count': daily_count})
+                except Exception as e:
+                    print(f'SMS API error: {e} | OTP for {phone}: {otp}')
+                    send_json(self, {'ok': True, 'sms_count': daily_count})
+            elif daily_count > 38:
+                print(f'[LIMIT REACHED] OTP for {phone}: {otp}')
+                send_json(self, {'ok': True, 'sms_count': daily_count,
+                                 'warning': 'Daily SMS limit reached. OTP shown in server terminal only.'})
+            else:
+                print(f'[DEV] OTP for {phone[-10:]}: {otp}  (add FAST2SMS_API_KEY to .env.local for real SMS)')
+                send_json(self, {'ok': True, 'sms_count': 0})
+            return
+
+        elif path == '/api/otp/verify':
+            import time
+            phone = body.get('phone', '')
+            otp   = body.get('otp', '')
+            store = getattr(Handler, '_otp_store', {})
+            entry = store.get(phone)
+            if not entry:
+                send_json(self, {'error': 'OTP not found. Please request a new one.'}, 400); return
+            if time.time() > entry['expires']:
+                del store[phone]
+                send_json(self, {'error': 'OTP expired. Please request a new one.'}, 400); return
+            if entry['otp'] != otp:
+                send_json(self, {'error': 'Invalid OTP. Please try again.'}, 400); return
+            del store[phone]
+            send_json(self, {'ok': True})
+            return
+
+        elif path == '/api/otp/sms-stats':
+            import datetime as _dt
+            today = _dt.date.today().isoformat()
+            with get_db() as db:
+                try:
+                    daily = db.execute(
+                        'SELECT COUNT(*) FROM sms_log WHERE date=?', (today,)
+                    ).fetchone()[0]
+                    total = db.execute('SELECT COUNT(*) FROM sms_log').fetchone()[0]
+                    send_json(self, {
+                        'daily_count': daily,
+                        'daily_limit': 38,
+                        'remaining': max(0, 38 - daily),
+                        'total_sent': total,
+                        'date': today,
+                        'warning': daily >= 35
+                    })
+                except:
+                    send_json(self, {'daily_count': 0, 'daily_limit': 38, 'remaining': 38})
+            return
+
         if path == '/api/razorpay/create-order':
             import urllib.request, urllib.error, base64, json as _json
             key_id     = os.environ.get('RAZORPAY_KEY_ID', '')
@@ -505,9 +608,10 @@ class Handler(BaseHTTPRequestHandler):
                             product_name TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
                         )""")
                     db.execute(
-                        "INSERT INTO orders (order_id,payment_id,signature,amount,product_id,product_name) VALUES (?,?,?,?,?,?)",
+                        "INSERT OR IGNORE INTO orders (order_id,payment_id,signature,amount,product_id,product_name,customer_name,customer_email,customer_phone) VALUES (?,?,?,?,?,?,?,?,?)",
                         (order_id, payment_id, signature,
-                         body.get('amount', 0), body.get('product_id', 0), body.get('product_name', ''))
+                         body.get('amount', 0), body.get('product_id', 0), body.get('product_name', ''),
+                         body.get('customer_name', ''), body.get('customer_email', ''), body.get('customer_phone', ''))
                     )
                 send_json(self, {'ok': True, 'payment_id': payment_id})
                 # WhatsApp notification via wa.me link (logged server-side)
@@ -531,14 +635,6 @@ class Handler(BaseHTTPRequestHandler):
                 ).fetchall()
             send_json(self, [row_to_dict(r) for r in rows])
 
-        elif path == '/api/orders':
-            with get_db() as db:
-                try:
-                    rows = db.execute('SELECT * FROM orders ORDER BY created_at DESC').fetchall()
-                    send_json(self, [row_to_dict(r) for r in rows])
-                except:
-                    send_json(self, [])
-
         elif path == '/api/analytics':
             with get_db() as db:
                 events = db.execute(
@@ -556,13 +652,6 @@ class Handler(BaseHTTPRequestHandler):
                 'recentlyViewed':[dict(r) for r in recent],
                 'inquiries':     [dict(r) for r in inqs],
             })
-
-        elif path == '/api/inquiries':
-            with get_db() as db:
-                rows = db.execute(
-                    "SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 500"
-                ).fetchall()
-            send_json(self, [dict(r) for r in rows])
 
 
         elif path == '/api/products':
@@ -632,11 +721,22 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == '/api/inquiries':
             with get_db() as db:
+                # Migrate table if needed
+                cols = [r[1] for r in db.execute('PRAGMA table_info(inquiries)').fetchall()]
+                if 'customer_name' not in cols:
+                    db.execute("ALTER TABLE inquiries ADD COLUMN customer_name  TEXT DEFAULT ''")
+                    db.execute("ALTER TABLE inquiries ADD COLUMN customer_phone TEXT DEFAULT ''")
+                    db.execute("ALTER TABLE inquiries ADD COLUMN occasion       TEXT DEFAULT ''")
+                    db.execute("ALTER TABLE inquiries ADD COLUMN message        TEXT DEFAULT ''")
+                    db.execute("ALTER TABLE inquiries ADD COLUMN type           TEXT DEFAULT 'product'")
                 db.execute(
-                    "INSERT INTO inquiries (product_id,product_name,category,price) "
-                    "VALUES (?,?,?,?)",
+                    "INSERT INTO inquiries (product_id,product_name,category,price,customer_name,customer_phone,occasion,message,type) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
                     (body.get('product_id'), body.get('product_name',''),
-                     body.get('category',''), body.get('price',0))
+                     body.get('category',''), body.get('price',0),
+                     body.get('customer_name',''), body.get('customer_phone',''),
+                     body.get('occasion',''), body.get('message',''),
+                     body.get('type','product'))
                 )
             send_json(self, {'ok':True}, 201)
 
@@ -739,11 +839,45 @@ if __name__ == '__main__':
         if 'session_id' not in _cols:
             _db.execute("ALTER TABLE wishlist ADD COLUMN session_id TEXT NOT NULL DEFAULT 'anonymous'")
             print("  Migrated: added session_id to wishlist table")
+        # Migrate orders table if missing customer columns
+        _ocols = [r[1] for r in _db.execute("PRAGMA table_info(orders)").fetchall()]
+        if _ocols and 'customer_name' not in _ocols:
+            _db.execute("ALTER TABLE orders ADD COLUMN customer_name  TEXT DEFAULT ''")
+            _db.execute("ALTER TABLE orders ADD COLUMN customer_email TEXT DEFAULT ''")
+            _db.execute("ALTER TABLE orders ADD COLUMN customer_phone TEXT DEFAULT ''")
+            print("  Migrated: added customer columns to orders table")
         _db.execute("""
             CREATE TABLE IF NOT EXISTS wishlist_sessions (
                 session_id  TEXT PRIMARY KEY,
                 created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
                 last_active TEXT DEFAULT CURRENT_TIMESTAMP
+            )""")
+        _db.execute("""
+            CREATE TABLE IF NOT EXISTS orders (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id     TEXT,
+                payment_id   TEXT UNIQUE,
+                signature    TEXT,
+                amount       INTEGER,
+                product_id   INTEGER,
+                product_name TEXT,
+                customer_name  TEXT DEFAULT '',
+                customer_email TEXT DEFAULT '',
+                customer_phone TEXT DEFAULT '',
+                created_at   TEXT DEFAULT CURRENT_TIMESTAMP
+            )""")
+        _db.execute("""
+            CREATE TABLE IF NOT EXISTS cart (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                product_id INTEGER NOT NULL,
+                productId  TEXT DEFAULT '',
+                name       TEXT DEFAULT '',
+                price      INTEGER DEFAULT 0,
+                img        TEXT DEFAULT '',
+                qty        INTEGER DEFAULT 1,
+                added_at   TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(session_id, product_id)
             )""")
 
     print(f"""
