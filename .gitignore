@@ -11,6 +11,10 @@ sissytrends.db
 sissytrends.db-shm
 sissytrends.db-wal
 
+# DB backups — local only, never commit
+data/backups/
+*.bak
+
 # Python
 __pycache__/
 *.pyc

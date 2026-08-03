@@ -3,6 +3,10 @@ SissyTrends — Render Manager
 Manage your live Render server without redeploying.
 
 Usage:
+  python db_manager.py backup
+      Download orders & inquiries from Render as CSV files (saved locally)
+      Run this BEFORE every git push to preserve transaction data
+
   python db_manager.py download
       Pull live DB from Render to data/sissytrends.db
 
@@ -38,6 +42,45 @@ LOCAL_DB   = os.path.join(BASE, 'data', 'sissytrends.db')
 RENDER_URL = 'https://sissytrendsindia.onrender.com'
 SECRET_KEY = 'sissy-db-2025'
 IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}
+
+# ── Backup orders & inquiries ────────────────────────────────────
+def backup():
+    import csv, json, datetime, sqlite3
+    print('Downloading live DB for backup...')
+    # Download DB first
+    url = f'{RENDER_URL}/api/db-download?key={SECRET_KEY}'
+    tmp = os.path.join(BASE, 'data', 'sissytrends_backup.db')
+    os.makedirs(os.path.dirname(tmp), exist_ok=True)
+    urllib.request.urlretrieve(url, tmp)
+    conn = sqlite3.connect(tmp)
+    conn.row_factory = sqlite3.Row
+    stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    backup_dir = os.path.join(BASE, 'data', 'backups')
+    os.makedirs(backup_dir, exist_ok=True)
+    tables = {'orders': [], 'inquiries': []}
+    for table in tables:
+        try:
+            rows = conn.execute(f'SELECT * FROM {table} ORDER BY created_at DESC').fetchall()
+            tables[table] = [dict(r) for r in rows]
+        except: pass
+    conn.close()
+    os.remove(tmp)
+    # Save as CSV
+    for table, rows in tables.items():
+        if not rows: print(f'  {table}: empty'); continue
+        fpath = os.path.join(backup_dir, f'{table}_{stamp}.csv')
+        with open(fpath, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.DictWriter(f, fieldnames=rows[0].keys(), delimiter=';')
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f'  {table}: {len(rows)} rows saved → {fpath}')
+    # Save combined JSON
+    jpath = os.path.join(backup_dir, f'backup_{stamp}.json')
+    with open(jpath, 'w', encoding='utf-8') as f:
+        json.dump(tables, f, indent=2, default=str)
+    print(f'  JSON backup → {jpath}')
+    print(f'\nBackup complete. {sum(len(v) for v in tables.values())} total records saved.')
+    print('Safe to git push now.')
 
 # ── DB download ───────────────────────────────────────────────────
 def download():
@@ -143,6 +186,7 @@ if __name__ == '__main__':
 
     if   cmd == 'download': download()
     elif cmd == 'upload':   upload()
+    elif cmd == 'backup':   backup()
     elif cmd == 'csv':
         if len(args) < 2: print('Usage: python db_manager.py csv <file_path> [add|replace]')
         else: upload_csv(args[1], args[2] if len(args) > 2 else 'add')
