@@ -172,6 +172,7 @@ function addToWishlist(product) {
   saveWishlistItems(items);
   trackWishlistAdd(product.productId || product.id);
   updateWishlistBadge();
+  updateCartBadge();
   showToast(`❤ "${product.name}" added to wishlist`);
   document.querySelectorAll(`[data-wishlist-id="${product.id}"]`).forEach(btn => {
     btn.innerHTML = '♥'; btn.style.color = '#c0392b';
@@ -289,7 +290,7 @@ function renderCartDrawer(){
 
 async function checkoutCart(){
   const items=getCartItems(); if(!items.length) return;
-  openCheckoutModal(async function(customer) {
+  openSimpleCheckout(async function(customer) {
     await _processCartCheckout(customer);
   });
 }
@@ -324,7 +325,9 @@ async function _processCartCheckout(customer){
         else alert('Payment verification failed. Please contact us on WhatsApp.');
       },
       prefill:{name:customer.name,email:customer.email,contact:customer.phone}, theme:{color:'#c9a24e'}
-    }).open();
+    });
+    rzp2.on('payment.failed',function(r){logPaymentAttempt({order_id:order.id,status:'failed',error_reason:r.error?.reason||'',amount:order.amount,product_name:items.map(function(i){return i.name;}).join(', '),customer_name:customer.name,customer_phone:customer.phone});});
+    rzp2.open();
   } catch(e){ alert('Payment unavailable. Please enquire on WhatsApp.'); }
 }
 
@@ -830,12 +833,13 @@ function showOrderComplete(details) {
   if (!popup) {
     popup = document.createElement('div');
     popup.id = 'orderCompletePopup';
-    popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+    popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
     document.body.appendChild(popup);
   }
   const amt = details.amount ? '\u20b9' + Math.round(details.amount / 100).toLocaleString() : '';
   popup.innerHTML = `
-    <div style="background:#faf5ec;max-width:480px;width:100%;position:relative;animation:fadeSlideUp .35s ease;border:1px solid rgba(201,162,78,.3)">
+    <div style="background:#faf5ec;max-width:480px;width:100%;position:relative;animation:fadeSlideUp .35s ease;border:1px solid rgba(201,162,78,.3);margin:auto">
+      <button onclick="document.getElementById('orderCompletePopup').style.display='none';document.body.style.overflow='';" style="position:absolute;top:10px;right:10px;background:rgba(122,31,46,.08);border:none;width:30px;height:30px;border-radius:50%;font-size:18px;cursor:pointer;color:#7a1f2e;z-index:2;line-height:1">&times;</button>
       <div style="height:4px;background:linear-gradient(90deg,#7a1f2e,#c9a24e,#7a1f2e)"></div>
       <div style="padding:36px 32px">
         <!-- Success icon -->
@@ -889,11 +893,117 @@ function showOrderComplete(details) {
   document.body.style.overflow = 'hidden';
 }
 
+
+// ── Simple pre-checkout modal (no OTP) ───────────────────────────
+function openSimpleCheckout(callback) {
+  let modal = document.getElementById('simpleCheckoutModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'simpleCheckoutModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = `
+      <div style="background:#faf5ec;max-width:420px;width:100%;position:relative;border:1px solid rgba(201,162,78,.3)">
+        <div style="height:4px;background:linear-gradient(90deg,#7a1f2e,#c9a24e,#7a1f2e)"></div>
+        <div style="padding:28px 28px 24px">
+          <button onclick="closeSimpleCheckout()" style="position:absolute;top:10px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:rgba(122,31,46,.4)">&times;</button>
+          <div style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:.25em;color:#c9a24e;margin-bottom:8px">CHECKOUT</div>
+          <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:400;color:#7a1f2e;margin-bottom:18px">Your Details</h3>
+
+          <div style="margin-bottom:12px">
+            <label style="display:block;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:5px">Full Name *</label>
+            <input id="scName" type="text" placeholder="e.g. Priya Sharma"
+              style="width:100%;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:'Jost',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>
+          </div>
+
+          <div style="margin-bottom:12px">
+            <label style="display:block;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:5px">Mobile Number *</label>
+            <div style="display:flex;gap:6px">
+              <span style="padding:10px 10px;background:#f0ebe0;border:1px solid rgba(201,162,78,.3);font-family:'Jost',sans-serif;font-size:13px;color:#5c3d1e;white-space:nowrap">+91</span>
+              <input id="scPhone" type="tel" placeholder="10-digit mobile" maxlength="10"
+                style="flex:1;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:'Jost',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>
+            </div>
+          </div>
+
+          <div style="margin-bottom:20px">
+            <label style="display:block;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:5px">
+              Email <span style="color:#aaa;font-size:9px">(optional)</span>
+            </label>
+            <input id="scEmail" type="email" placeholder="e.g. priya@email.com"
+              style="width:100%;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:'Jost',sans-serif;font-size:13px;outline:none;box-sizing:border-box"/>
+          </div>
+
+          <div id="scError" style="display:none;color:#c0392b;font-family:'Jost',sans-serif;font-size:12px;margin-bottom:12px"></div>
+
+          <button onclick="submitSimpleCheckout()"
+            style="width:100%;padding:13px;background:#7a1f2e;border:none;color:#faf5ec;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer">
+            Proceed to Payment
+          </button>
+        </div>
+        <div style="height:2px;background:linear-gradient(90deg,transparent,#c9a24e,transparent)"></div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+  // Reset
+  document.getElementById('scName').value = '';
+  document.getElementById('scPhone').value = '';
+  document.getElementById('scEmail').value = '';
+  document.getElementById('scError').style.display = 'none';
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  document.getElementById('scName').focus();
+  // Store callback
+  modal._callback = callback;
+}
+
+function closeSimpleCheckout() {
+  const modal = document.getElementById('simpleCheckoutModal');
+  if (modal) modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function submitSimpleCheckout() {
+  const name  = document.getElementById('scName').value.trim();
+  const phone = document.getElementById('scPhone').value.trim();
+  const email = document.getElementById('scEmail').value.trim();
+  const errEl = document.getElementById('scError');
+
+  if (!name) {
+    errEl.textContent = 'Please enter your name.';
+    errEl.style.display = 'block'; return;
+  }
+  if (!/^[6-9]\d{9}$/.test(phone)) {
+    errEl.textContent = 'Please enter a valid 10-digit Indian mobile number.';
+    errEl.style.display = 'block'; return;
+  }
+  if (email && !/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
+    errEl.textContent = 'Please enter a valid email address.';
+    errEl.style.display = 'block'; return;
+  }
+  errEl.style.display = 'none';
+  closeSimpleCheckout();
+  const modal = document.getElementById('simpleCheckoutModal');
+  if (modal && modal._callback) {
+    modal._callback({ name, phone: '91' + phone, email });
+  }
+}
+
 async function buyNow() {
   if (!_modalProduct) return;
-  openCheckoutModal(async function(customer) {
+  openSimpleCheckout(async function(customer) {
     await _processBuyNow(customer);
   });
+}
+
+
+// ── Log all payment outcomes to DB ───────────────────────────────
+async function logPaymentAttempt(data) {
+  const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000' : '';
+  fetch(base + '/api/orders/attempt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).catch(() => {});
 }
 
 async function _processBuyNow(customer) {
@@ -946,7 +1056,14 @@ async function _processBuyNow(customer) {
         const result = await verify.json();
         if (result.ok) {
           closeModal();
-          showToast('✔ Payment successful! We will contact you shortly.');
+          showOrderComplete({
+            order_id:       response.razorpay_order_id,
+            payment_id:     response.razorpay_payment_id,
+            product_name:   product.name,
+            amount:         order.amount,
+            customer_name:  customer.name,
+            customer_phone: customer.phone
+          });
         } else {
           alert('Payment verification failed. Please contact us on WhatsApp.');
         }
@@ -957,7 +1074,39 @@ async function _processBuyNow(customer) {
     };
 
     const rzp = new window.Razorpay(options);
-    rzp.on('payment.failed', () => alert('Payment failed. Please try again or enquire on WhatsApp.'));
+    rzp.on('payment.failed', function(resp) {
+      logPaymentAttempt({
+        order_id:      order.id,
+        payment_id:    resp.error?.metadata?.payment_id || '',
+        status:        'failed',
+        error_reason:  resp.error?.reason || '',
+        error_desc:    resp.error?.description || '',
+        amount:        order.amount,
+        product_id:    product.id,
+        product_name:  product.name,
+        customer_name: customer.name,
+        customer_email:customer.email,
+        customer_phone:customer.phone
+      });
+      alert('Payment failed: ' + (resp.error?.description || 'Please try again or enquire on WhatsApp.'));
+    });
+    options.modal = {
+      ondismiss: function() {
+        logPaymentAttempt({
+          order_id:      order.id,
+          payment_id:    '',
+          status:        'dismissed',
+          error_reason:  'Customer closed payment window',
+          error_desc:    '',
+          amount:        order.amount,
+          product_id:    product.id,
+          product_name:  product.name,
+          customer_name: customer.name,
+          customer_email:customer.email,
+          customer_phone:customer.phone
+        });
+      }
+    };
     rzp.open();
 
   } catch(e) {
@@ -966,23 +1115,49 @@ async function _processBuyNow(customer) {
   }
 }
 
-function enquireOnWhatsApp() {
+// ── Location capture ────────────────────────────────────────────
+async function getCustomerLocation() {
+  if (localStorage.getItem('st_loc_denied') === '1') return '';
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(''); return; }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude: lat, longitude: lon } = pos.coords;
+          const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : '';
+          const r = await fetch(`${base}/api/geocode?lat=${lat}&lon=${lon}`);
+          const d = await r.json();
+          resolve(d.location || '');
+        } catch { resolve(''); }
+      },
+      (err) => {
+        if (err.code === 1) localStorage.setItem('st_loc_denied', '1');
+        resolve('');
+      },
+      { timeout: 5000 }
+    );
+  });
+}
+
+async function enquireOnWhatsApp() {
   if (!_modalProduct) return;
   const p    = _modalProduct;
   const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5000' : '';
+  // Get location (non-blocking — submits even if denied)
+  const location = await getCustomerLocation();
+  // Save to DB
   fetch(base + '/api/inquiries', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      product_id:   p.id,
-      product_name: p.name,
-      category:     p.category,
-      price:        p.price,
-      type:         'product'
+      product_id: p.id, product_name: p.name,
+      category: p.category, price: p.price,
+      type: 'product', location: location
     })
-  }).then(r => r.json()).then(data => {
-    if (data.ok) showToast('\u2714 Enquiry sent! We will contact you shortly.');
   }).catch(() => {});
+  // Open WhatsApp
+  const text = encodeURIComponent(`Hi SissyTrends! I'm interested in this piece.\n\nProduct: ${p.name}\nID: ${p.productId||'—'}\nPrice: \u20b9${p.price.toLocaleString()}${location ? '\nLocation: '+location : ''}`);
+  window.open(`${BRAND.whatsapp}?text=${text}`, '_blank');
 }
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(true); });
@@ -992,6 +1167,72 @@ window.addEventListener('load', () => {
   const loader = document.getElementById('pageLoader');
   if (loader) setTimeout(() => loader.classList.add('hidden'), 1200);
 });
+
+// ── Product Search Overlay ───────────────────────────────────────────
+function openSearchOverlay() {
+  let ov = document.getElementById('searchOverlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'searchOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(26,10,6,.93);z-index:99999;display:flex;flex-direction:column;align-items:center;padding:80px 20px 40px;backdrop-filter:blur(4px)';
+    ov.innerHTML = `
+      <button onclick="closeSearchOverlay()" style="position:absolute;top:20px;right:24px;background:none;border:none;color:rgba(250,245,236,.5);font-size:28px;cursor:pointer">&times;</button>
+      <div style="width:100%;max-width:600px">
+        <div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.3em;color:#c9a24e;text-align:center;margin-bottom:16px">SEARCH PRODUCTS</div>
+        <div style="position:relative">
+          <input id="searchInput" type="text" placeholder="Search sarees, jewellery, decor..."
+            style="width:100%;padding:16px 48px 16px 20px;background:rgba(250,245,236,.06);border:1px solid rgba(201,162,78,.3);color:#faf5ec;font-family:'Jost',sans-serif;font-size:14px;outline:none;box-sizing:border-box"
+            oninput="runSearch(this.value)" onkeydown="if(event.key==='Escape')closeSearchOverlay()"/>
+          <svg style="position:absolute;right:16px;top:50%;transform:translateY(-50%);opacity:.4" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#faf5ec" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <div id="searchResults" style="margin-top:16px;max-height:60vh;overflow-y:auto"></div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function(e){ if(e.target===ov) closeSearchOverlay(); });
+  }
+  ov.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  setTimeout(function(){ var el=document.getElementById('searchInput'); if(el) el.focus(); }, 100);
+}
+
+function closeSearchOverlay() {
+  var ov = document.getElementById('searchOverlay');
+  if (ov) ov.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function runSearch(query) {
+  var resultsEl = document.getElementById('searchResults');
+  if (!resultsEl) return;
+  query = query.trim().toLowerCase();
+  if (!query) { resultsEl.innerHTML = ''; return; }
+  var products = getProducts();
+  var matches  = products.filter(function(p) {
+    return (p.name||'').toLowerCase().includes(query) ||
+           (p.category||'').toLowerCase().includes(query) ||
+           (p.subcategory||'').toLowerCase().includes(query) ||
+           (p.desc||'').toLowerCase().includes(query) ||
+           (p.productId||'').toLowerCase().includes(query);
+  }).slice(0, 12);
+  if (!matches.length) {
+    resultsEl.innerHTML = '<div style="text-align:center;color:rgba(250,245,236,.3);font-family:\'Cormorant Garamond\',serif;font-style:italic;padding:30px">No products found</div>';
+    return;
+  }
+  resultsEl.innerHTML = matches.map(function(p) {
+    return '<div onclick="closeSearchOverlay();openModal('+p.id+')"'
+      +' style="display:flex;gap:14px;padding:12px;cursor:pointer;border-bottom:1px solid rgba(201,162,78,.1)"'
+      +' onmouseover="this.style.background=\'rgba(201,162,78,.06)\'" onmouseout="this.style.background=\'\'" >'
+      +'<img src="'+(p.img||'')+'" style="width:52px;height:64px;object-fit:cover;flex-shrink:0;background:rgba(201,162,78,.1)"'
+      +' onerror="this.style.background=\'linear-gradient(135deg,#2D2520,#8B7355)\'"/>'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-family:\'Cormorant Garamond\',serif;font-size:1rem;color:#faf5ec;margin-bottom:3px">'+p.name+'</div>'
+      +'<div style="font-family:\'Jost\',sans-serif;font-size:10px;color:rgba(201,162,78,.6);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">'+(p.category||'')+(p.subcategory?' · '+p.subcategory:'')+'</div>'
+      +'<div style="font-family:\'Cormorant Garamond\',serif;font-size:1rem;color:#c9a24e">&#8377;'+(p.price||0).toLocaleString()+'</div>'
+      +'</div>'
+      +(p.badge?'<span style="align-self:flex-start;font-family:\'Jost\',sans-serif;font-size:9px;letter-spacing:.1em;padding:2px 8px;background:rgba(201,162,78,.15);color:#c9a24e;text-transform:uppercase">'+p.badge+'</span>':'')
+      +'</div>';
+  }).join('');
+}
 
 /* ── DOMContentLoaded ── */
 document.addEventListener('DOMContentLoaded', () => {
@@ -1029,6 +1270,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.reveal').forEach(r => revealObs.observe(r));
 
   updateWishlistBadge();
+  updateCartBadge();
 
   const urlParams = new URLSearchParams(window.location.search);
   const pidParam  = urlParams.get('product');
@@ -1182,7 +1424,7 @@ function renderProductCard(product, delay = 0) {
             <span>Quick View</span><span class="arrow">→</span>
           </button>
           <button class="btn-wa" style="width:100%;padding:10px"
-            onclick="event.stopPropagation();_modalProduct=getProducts().find(p=>p.id===${product.id});enquireOnWhatsApp()">
+            onclick="event.stopPropagation();_modalProduct=_productCache[${product.id}]||getProducts().find(p=>p.id===${product.id});enquireOnWhatsApp()">
             <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.528 5.84L.057 23.5l5.797-1.499A11.938 11.938 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.854 0-3.6-.497-5.11-1.367l-.366-.218-3.44.889.921-3.32-.239-.384A9.955 9.955 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
             WhatsApp
           </button>
@@ -1327,6 +1569,9 @@ function injectNav(activePage, isRoot) {
         <li><a href="${b}pages/matcher.html" class="nav-special ${act('Matcher')}">✦ Style Matcher</a></li>
       </ul>
       <div class="nav-actions">
+        <button class="nav-icon-btn" title="Search Products" onclick="openSearchOverlay()" style="position:relative">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
         <button class="nav-icon-btn" title="My Cart" onclick="openCartDrawer()" style="position:relative">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
           <span class="nav-badge" id="cartBadge" style="display:none">0</span>

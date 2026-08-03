@@ -15,6 +15,16 @@ import sqlite3, json, os, re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
+# ── Load .env.local automatically (works when double-clicking start.bat) ──
+_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env.local')
+if os.path.exists(_env_path):
+    with open(_env_path, encoding='utf-8') as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _v = _line.split('=', 1)
+                os.environ[_k.strip()] = _v.strip()
+
 # ── Paths ────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # On Render (no persistent disk): store DB in app directory
@@ -318,6 +328,38 @@ class Handler(BaseHTTPRequestHandler):
                 except:
                     send_json(self, [])
 
+        elif path == '/api/geocode':
+            qs  = parse_qs(urlparse(self.path).query)
+            lat = qs.get('lat', [None])[0]
+            lon = qs.get('lon', [None])[0]
+            if not lat or not lon:
+                send_json(self, {'error': 'Missing lat/lon'}, 400); return
+            import urllib.request as _ur
+            try:
+                req = _ur.Request(
+                    f'https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json',
+                    headers={'User-Agent': 'SissyTrends/1.0'}
+                )
+                with _ur.urlopen(req, timeout=5) as r:
+                    import json as _j
+                    data = _j.loads(r.read().decode())
+                a = data.get('address', {})
+                location = ', '.join(filter(None, [
+                    a.get('city') or a.get('town') or a.get('village') or a.get('suburb',''),
+                    a.get('state','')
+                ]))
+                send_json(self, {'location': location})
+            except Exception as e:
+                send_json(self, {'location': ''})
+
+        elif path == '/api/inquiries':
+            with get_db() as db:
+                try:
+                    rows = db.execute('SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 500').fetchall()
+                    send_json(self, [dict(r) for r in rows])
+                except:
+                    send_json(self, [])
+
         else:
             self._serve_file(p.path)
 
@@ -469,7 +511,31 @@ class Handler(BaseHTTPRequestHandler):
 
         body = read_body(self)
 
-        if path == '/api/otp/send':
+
+        if path == '/api/inquiries':
+            with get_db() as db:
+                cols = [r[1] for r in db.execute('PRAGMA table_info(inquiries)').fetchall()]
+                if 'customer_name' not in cols:
+                    db.execute("ALTER TABLE inquiries ADD COLUMN customer_name  TEXT DEFAULT ''")
+                    db.execute("ALTER TABLE inquiries ADD COLUMN customer_phone TEXT DEFAULT ''")
+                    db.execute("ALTER TABLE inquiries ADD COLUMN occasion       TEXT DEFAULT ''")
+                    db.execute("ALTER TABLE inquiries ADD COLUMN message        TEXT DEFAULT ''")
+                    db.execute("ALTER TABLE inquiries ADD COLUMN type           TEXT DEFAULT 'product'")
+                if 'location' not in cols:
+                    db.execute("ALTER TABLE inquiries ADD COLUMN location TEXT DEFAULT ''")
+                db.execute(
+                    "INSERT INTO inquiries (product_id,product_name,category,price,customer_name,customer_phone,occasion,message,type,location) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (body.get('product_id'), body.get('product_name',''),
+                     body.get('category',''), body.get('price',0),
+                     body.get('customer_name',''), body.get('customer_phone',''),
+                     body.get('occasion',''), body.get('message',''),
+                     body.get('type','product'), body.get('location',''))
+                )
+            send_json(self, {'ok':True}, 201)
+            return
+
+        elif path == '/api/otp/send':
             import random, time, urllib.request as _ur, urllib.parse as _up, datetime as _dt
             phone = body.get('phone', '')
             if not phone or len(phone) < 10:
@@ -721,7 +787,6 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == '/api/inquiries':
             with get_db() as db:
-                # Migrate table if needed
                 cols = [r[1] for r in db.execute('PRAGMA table_info(inquiries)').fetchall()]
                 if 'customer_name' not in cols:
                     db.execute("ALTER TABLE inquiries ADD COLUMN customer_name  TEXT DEFAULT ''")
@@ -740,6 +805,27 @@ class Handler(BaseHTTPRequestHandler):
                 )
             send_json(self, {'ok':True}, 201)
 
+        elif path == '/api/orders/attempt':
+            with get_db() as db:
+                # Migrate if needed
+                cols = [r[1] for r in db.execute('PRAGMA table_info(orders)').fetchall()]
+                if 'status' not in cols:
+                    db.execute("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'paid'")
+                    db.execute("ALTER TABLE orders ADD COLUMN error_reason TEXT DEFAULT ''")
+                    db.execute("ALTER TABLE orders ADD COLUMN error_desc   TEXT DEFAULT ''")
+                db.execute(
+                    "INSERT INTO orders (order_id,payment_id,amount,product_id,product_name,"
+                    "customer_name,customer_email,customer_phone,status,error_reason,error_desc) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (body.get('order_id',''), body.get('payment_id',''),
+                     body.get('amount',0), body.get('product_id',0),
+                     body.get('product_name',''), body.get('customer_name',''),
+                     body.get('customer_email',''), body.get('customer_phone',''),
+                     body.get('status','failed'), body.get('error_reason',''),
+                     body.get('error_desc',''))
+                )
+            send_json(self, {'ok': True}, 201)
+            return
         else:
             send_json(self, {'error':'Not found'}, 404)
 
@@ -854,17 +940,20 @@ if __name__ == '__main__':
             )""")
         _db.execute("""
             CREATE TABLE IF NOT EXISTS orders (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                order_id     TEXT,
-                payment_id   TEXT UNIQUE,
-                signature    TEXT,
-                amount       INTEGER,
-                product_id   INTEGER,
-                product_name TEXT,
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id       TEXT,
+                payment_id     TEXT,
+                signature      TEXT,
+                amount         INTEGER,
+                product_id     INTEGER,
+                product_name   TEXT,
                 customer_name  TEXT DEFAULT '',
                 customer_email TEXT DEFAULT '',
                 customer_phone TEXT DEFAULT '',
-                created_at   TEXT DEFAULT CURRENT_TIMESTAMP
+                status         TEXT DEFAULT 'paid',
+                error_reason   TEXT DEFAULT '',
+                error_desc     TEXT DEFAULT '',
+                created_at     TEXT DEFAULT CURRENT_TIMESTAMP
             )""")
         _db.execute("""
             CREATE TABLE IF NOT EXISTS cart (

@@ -252,6 +252,9 @@
   <!-- ORDERS -->
   <div class="admin-section" id="tab-orders"></div>
 
+  <!-- INQUIRIES -->
+  <div class="admin-section" id="tab-inquiries"></div>
+
   <!-- ADD / EDIT PRODUCT -->
   <div class="admin-section" id="tab-add">
     <h2 class="section-heading" id="formHeading">Add New Product</h2>
@@ -441,9 +444,12 @@ function switchTab(name) {
   if (name === 'analytics') loadAndRenderAnalytics();
   if (name === 'inquiries') {
     loadAndRenderInquiries();
-    // Mark all as seen
-    localStorage.setItem('inq_seen_count', document.getElementById('inqBadge')?.textContent || '0');
-    document.getElementById('inqBadge').style.display = 'none';
+    // Mark current total as seen
+    fetch(`${API}/inquiries`).then(r=>r.json()).then(inqs=>{
+      localStorage.setItem('inq_seen_count', String(inqs.length));
+      const badge = document.getElementById('inqBadge');
+      if (badge) { badge.textContent = '0'; badge.style.display = 'none'; }
+    }).catch(()=>{});
   }
   if (name === 'orders')    loadAndRenderOrders();
 }
@@ -776,17 +782,19 @@ async function loadAndRenderInquiries() {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:16px">
         <h2 class="section-heading" style="margin-bottom:0">Inquiries (${inqs.length})</h2>
         <button onclick="clearInquiries()" style="padding:8px 16px;border:1px solid rgba(220,80,80,.4);color:rgba(220,80,80,.7);background:none;font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer">Clear All</button>
+        <button onclick="markAllRead(${inqs.length})" style="padding:8px 16px;border:1px solid rgba(201,162,78,.4);color:#c9a24e;background:none;font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer">&#10003; Mark All Read</button>
       </div>
       <div class="table-wrap">
         <table class="product-table">
-          <thead><tr><th>Type</th><th>Product / Subject</th><th>Customer</th><th>Phone</th><th>Occasion</th><th>Message</th><th>Date</th></tr></thead>
+          <thead><tr><th>Type</th><th>Product / Subject</th><th>Customer</th><th>Phone</th><th>Location</th><th>Occasion</th><th>Message</th><th>Date</th></tr></thead>
           <tbody>${inqs.length === 0
-            ? '<tr><td colspan="7" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No inquiries yet.</td></tr>'
+            ? '<tr><td colspan="8" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No inquiries yet.</td></tr>'
             : inqs.map(i => `<tr>
             <td><span class="badge-pill" style="background:${i.type==='contact'?'rgba(201,162,78,.15)':'rgba(107,26,42,.3)'}">${i.type==='contact'?'Contact':'Product'}</span></td>
             <td style="color:#faf5ec;max-width:160px">${i.product_name||'—'}<br/><span style="font-size:10px;color:rgba(201,162,78,.4)">${i.price&&i.price>0?'&#8377;'+i.price.toLocaleString():''}</span></td>
             <td style="color:#faf5ec;font-size:12px">${i.customer_name||'—'}</td>
             <td style="color:rgba(250,245,236,.6);font-size:12px">${i.customer_phone||'—'}</td>
+            <td style="color:rgba(201,162,78,.7);font-size:12px">${i.location||'—'}</td>
             <td style="color:rgba(201,162,78,.6);font-size:12px">${i.occasion||'—'}</td>
             <td style="color:rgba(250,245,236,.5);font-size:12px;max-width:200px">${i.message||'—'}</td>
             <td style="font-size:11px;color:rgba(250,245,236,.4);white-space:nowrap">${(i.created_at||'').substring(0,16).replace('T',' ')}</td>
@@ -800,8 +808,18 @@ async function loadAndRenderInquiries() {
 async function clearInquiries() {
   if (!confirm('Clear all inquiry records?')) return;
   await fetch(`${API}/inquiries`, { method: 'DELETE' });
+  localStorage.setItem('inq_seen_count', '0');
+  document.getElementById('inqBadge').style.display = 'none';
   loadAndRenderInquiries();
   showAdminToast('Inquiries cleared ✦');
+}
+
+function markAllRead(total) {
+  localStorage.setItem('inq_seen_count', String(total));
+  const badge = document.getElementById('inqBadge');
+  if (badge) { badge.textContent = '0'; badge.style.display = 'none'; }
+  showAdminToast('✔ All inquiries marked as read');
+  setTimeout(checkNewInquiries, 300);
 }
 
 async function loadAndRenderOrders() {
@@ -824,16 +842,24 @@ async function loadAndRenderOrders() {
           <thead><tr><th>Order ID</th><th>Payment ID</th><th>Product</th><th>Customer</th><th>Phone</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
           <tbody>${orders.length === 0
             ? '<tr><td colspan="8" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No orders yet.</td></tr>'
-            : orders.map(o => `<tr>
-              <td style="color:#c9a24e;font-size:11px">${o.order_id||'—'}</td>
-              <td style="color:rgba(250,245,236,.5);font-size:11px">${o.payment_id||'—'}</td>
-              <td style="color:#faf5ec">${o.product_name||'—'}</td>
-              <td style="color:#faf5ec;font-size:12px">${o.customer_name||'—'}<br><span style="color:rgba(250,245,236,.4);font-size:11px">${o.customer_email||''}</span></td>
-              <td style="color:rgba(250,245,236,.6);font-size:12px">${o.customer_phone||'—'}</td>
-              <td style="color:#c9a24e;font-weight:600">&#8377;${((o.amount||0)/100).toLocaleString()}</td>
-              <td><span style="color:#2ea043;font-size:11px">&#10003; Paid</span></td>
-              <td style="font-size:11px;color:rgba(250,245,236,.4)">${(o.created_at||'').substring(0,16).replace('T',' ')}</td>
-            </tr>`).join('')
+            : orders.map(o => {
+              const isPaid      = !o.status || o.status === 'paid';
+              const isFailed    = o.status === 'failed';
+              const isDismissed = o.status === 'dismissed';
+              const statusColor = isPaid ? '#2ea043' : isFailed ? '#c0392b' : '#e67e22';
+              const statusLabel = isPaid ? '&#10003; Paid' : isFailed ? '&#10007; Failed' : '&minus; Dismissed';
+              const statusTip   = isFailed ? (o.error_reason||o.error_desc||'') : isDismissed ? 'Customer closed window' : '';
+              return '<tr style="opacity:'+(isPaid?1:0.7)+'">'
+                +'<td style="color:#c9a24e;font-size:11px">'+(o.order_id||'&mdash;')+'</td>'
+                +'<td style="color:rgba(250,245,236,.5);font-size:11px">'+(o.payment_id||'&mdash;')+'</td>'
+                +'<td style="color:#faf5ec">'+(o.product_name||'&mdash;')+'</td>'
+                +'<td style="color:#faf5ec;font-size:12px">'+(o.customer_name||'&mdash;')+'<br><span style="color:rgba(250,245,236,.4);font-size:11px">'+(o.customer_email||'')+'</span></td>'
+                +'<td style="color:rgba(250,245,236,.6);font-size:12px">'+(o.customer_phone||'&mdash;')+'</td>'
+                +'<td style="color:#c9a24e;font-weight:600">'+(isPaid?'&#8377;'+Math.round((o.amount||0)/100).toLocaleString():'&mdash;')+'</td>'
+                +'<td><span style="color:'+statusColor+';font-size:11px">'+statusLabel+'</span>'+(statusTip?'<br><span style="font-size:10px;color:rgba(250,245,236,.3)">'+statusTip+'</span>':'')+'</td>'
+                +'<td style="font-size:11px;color:rgba(250,245,236,.4);white-space:nowrap">'+(o.created_at||'').substring(0,16).replace('T',' ')+'</td>'
+                +'</tr>';
+            }).join('')
           }</tbody>
         </table>
       </div>`;
