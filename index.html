@@ -754,7 +754,7 @@
   document.getElementById('navPlaceholder').outerHTML = injectNav('Home', true);
   document.getElementById('footerPlaceholder').outerHTML = injectFooter(true);
   // Razorpay public key — safe to expose in frontend
-  window.__RAZORPAY_KEY = 'rzp_live_TLAyLa3O8Vd4xI';
+  window.__RAZORPAY_KEY = window.__RAZORPAY_KEY || '';  // Set via api.py inline injection
 
   function observeNew(root) {
     root.querySelectorAll('.reveal:not(.visible)').forEach(r => {

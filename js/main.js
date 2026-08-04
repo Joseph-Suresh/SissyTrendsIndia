@@ -1647,10 +1647,16 @@ async function _processBuyNow(customer) {
 
     const rzp = new window.Razorpay(options);
     rzp.on('payment.failed', function(resp) {
+      var reason = (resp.error?.reason || '').toLowerCase();
+      var desc   = (resp.error?.description || '').toLowerCase();
+      // User cancelled/closed the payment window — not a real failure, stay silent
+      var isCancelled = reason.includes('cancel') || desc.includes('cancel')
+        || reason.includes('close') || desc.includes('close')
+        || reason === 'payment_cancelled';
       logPaymentAttempt({
         order_id:      order.id,
         payment_id:    resp.error?.metadata?.payment_id || '',
-        status:        'failed',
+        status:        isCancelled ? 'dismissed' : 'failed',
         error_reason:  resp.error?.reason || '',
         error_desc:    resp.error?.description || '',
         amount:        order.amount,
@@ -1660,7 +1666,9 @@ async function _processBuyNow(customer) {
         customer_email:customer.email,
         customer_phone:customer.phone
       });
-      alert('Payment failed: ' + (resp.error?.description || 'Please try again or enquire on WhatsApp.'));
+      if (!isCancelled) {
+        alert('Payment failed: ' + (resp.error?.description || 'Please try again or enquire on WhatsApp.'));
+      }
     });
     options.modal = {
       ondismiss: function() {

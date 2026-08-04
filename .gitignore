@@ -34,3 +34,8 @@ Thumbs.db
 # One-off patch scripts
 patch_mainjs.py
 patch_admin_login.py
+_remove_otp_set_live.py
+_test_env.py
+
+# Admin env config with credentials
+admin/env-config.js

@@ -105,7 +105,7 @@
 <script>
   document.getElementById('navPlaceholder').outerHTML = injectNav('Categories');
   document.getElementById('footerPlaceholder').outerHTML = injectFooter();
-  window.__RAZORPAY_KEY = 'rzp_live_TLAyLa3O8Vd4xI';
+  window.__RAZORPAY_KEY = window.__RAZORPAY_KEY || '';  // Set via api.py inline injection
 
   // Read URL params
   const params   = new URLSearchParams(window.location.search);

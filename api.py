@@ -114,12 +114,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/health':
             send_json(self, {'status':'ok','db':DB_PATH})
 
-        elif path == '/api/env':
-            # Serve admin credentials from environment variables (Render)
-            send_json(self, {
-                'ADMIN_USERNAME': os.environ.get('ADMIN_USERNAME', ''),
-                'ADMIN_PASSWORD': os.environ.get('ADMIN_PASSWORD', ''),
-            })
+        elif path == '/api/admin/login':
+            pass  # handled in do_POST
 
         elif path.startswith('/api/upload-image'):
             qs  = parse_qs(urlparse(self.path).query)
@@ -367,7 +363,23 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path.rstrip('/')
 
-        if path.startswith('/api/upload-image'):
+        if path == '/api/admin/login':
+            # Server-side admin login — credentials never sent to browser
+            length = int(self.headers.get('Content-Length', 0))
+            body   = json.loads(self.rfile.read(length) or b'{}')
+            u      = body.get('username', '')
+            p      = body.get('password', '')
+            valid_u = os.environ.get('ADMIN_USERNAME', 'austroindie_admin')
+            valid_p = os.environ.get('ADMIN_PASSWORD', '')
+            if not valid_p:
+                send_json(self, {'ok': False, 'error': 'Server misconfigured — ADMIN_PASSWORD not set in .env.local'}, 500)
+            elif u == valid_u and p == valid_p:
+                send_json(self, {'ok': True})
+            else:
+                send_json(self, {'ok': False, 'error': 'Invalid credentials.'}, 401)
+            return
+
+        elif path.startswith('/api/upload-image'):
             qs       = parse_qs(urlparse(self.path).query)
             key      = qs.get('key', [None])[0]
             if key != os.environ.get('DB_DOWNLOAD_KEY', 'sissy-db-2025'):
@@ -905,6 +917,12 @@ class Handler(BaseHTTPRequestHandler):
         mime = MIME.get(ext, 'application/octet-stream')
         with open(fpath, 'rb') as f:
             data = f.read()
+        # Inject Razorpay public key into HTML pages at serve-time
+        # so it never needs to be hardcoded in source files
+        if ext == '.html':
+            rzp_key = os.environ.get('RAZORPAY_KEY_ID', '')
+            injection = f'<script>window.__RAZORPAY_KEY="{rzp_key}";</script>'.encode()
+            data = data.replace(b'</head>', injection + b'</head>', 1)
         self.send_response(200)
         self.send_header('Content-Type',   mime)
         self.send_header('Content-Length', str(len(data)))
