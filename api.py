@@ -30,7 +30,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # On Render (no persistent disk): store DB in app directory
 # Locally: store in data/ subfolder
 _is_local = os.path.exists(os.path.join(BASE_DIR, '.localdev'))
-DB_PATH = os.path.join(BASE_DIR, 'data', 'sissytrends.db') if _is_local else os.path.join(BASE_DIR, 'sissytrends.db')
+# On Render: use persistent disk if mounted, else fall back to app dir (data lost on restart)
+_render_disk = os.environ.get('RENDER_DISK_PATH', '')
+if _is_local:
+    DB_PATH = os.path.join(BASE_DIR, 'data', 'sissytrends.db')
+elif _render_disk:
+    os.makedirs(_render_disk, exist_ok=True)
+    DB_PATH = os.path.join(_render_disk, 'sissytrends.db')
+else:
+    DB_PATH = os.path.join(BASE_DIR, 'sissytrends.db')  # ephemeral — lost on restart
 PORT     = int(os.environ.get('PORT', 5000))  # Render sets PORT env var
 HOST     = '0.0.0.0'  # bind to all interfaces (required for Render/cloud hosting)
 

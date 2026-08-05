@@ -10,8 +10,12 @@ CSV_PATH = os.path.join(BASE_DIR, 'products_CSVBasic.csv')
 # On Render (no persistent disk): store DB in app directory
 # Locally: store in data/ subfolder
 _is_local = os.path.exists(os.path.join(BASE_DIR, '.localdev'))
+_render_disk = os.environ.get('RENDER_DISK_PATH', '')
 if _is_local:
     DB_PATH = os.path.join(BASE_DIR, 'data', 'sissytrends.db')
+elif _render_disk:
+    os.makedirs(_render_disk, exist_ok=True)
+    DB_PATH = os.path.join(_render_disk, 'sissytrends.db')
 else:
     DB_PATH = os.path.join(BASE_DIR, 'sissytrends.db')
 
