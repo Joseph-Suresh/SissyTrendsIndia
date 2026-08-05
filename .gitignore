@@ -40,3 +40,4 @@ _test_env.py
 # Admin env config with credentials
 admin/env-config.js
 compress_images.py 
+compress_images.py 
