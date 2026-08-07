@@ -86,6 +86,21 @@ def init_db():
     );
     """)
 
+    # Coupon config table — stores the SHIP50 free-shipping campaign settings
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS coupon_config (
+        id      INTEGER PRIMARY KEY,
+        code    TEXT    DEFAULT 'SHIP50',
+        "limit" INTEGER DEFAULT 50,
+        used    INTEGER DEFAULT 0,
+        active  INTEGER DEFAULT 1
+    );
+    """)
+    # Seed default coupon row if not present
+    if not conn.execute("SELECT 1 FROM coupon_config WHERE id=1").fetchone():
+        conn.execute("INSERT INTO coupon_config (id,code,\"limit\",used,active) VALUES (1,'SHIP50',50,0,1)")
+
+
     existing = {r[0] for r in conn.execute("SELECT productId FROM products").fetchall()}
     added = 0
 

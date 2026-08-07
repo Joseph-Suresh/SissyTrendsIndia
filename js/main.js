@@ -1503,6 +1503,14 @@ function openSimpleCheckout(callback) {
       +'</select>'
       +'</div>'
       +'<div id="scError" style="display:none;color:#c0392b;font-family:\'Jost\',sans-serif;font-size:12px;margin-bottom:12px"></div>'
+      +'<div style="margin-bottom:14px">'
+      +'<label style="display:block;font-family:\'Jost\',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#8c7b6b;margin-bottom:5px">Coupon Code <span style="color:#aaa;font-size:9px">(optional)</span></label>'
+      +'<div style="display:flex;gap:6px">'
+      +'<input id="scCoupon" type="text" placeholder="e.g. SHIP50" style="flex:1;padding:10px 12px;border:1px solid rgba(201,162,78,.3);background:#fff;font-family:\'Jost\',sans-serif;font-size:13px;outline:none;box-sizing:border-box;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"/>'
+      +'<button onclick="applyCoupon()" type="button" style="padding:10px 14px;background:#c9a24e;border:none;color:#1a0a06;font-family:\'Jost\',sans-serif;font-size:10px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;white-space:nowrap">Apply</button>'
+      +'</div>'
+      +'<div id="scCouponMsg" style="display:none;font-family:\'Jost\',sans-serif;font-size:11px;margin-top:6px"></div>'
+      +'</div>'
       +'<button onclick="submitSimpleCheckout()" style="width:100%;padding:13px;background:#7a1f2e;border:none;color:#faf5ec;font-family:\'Jost\',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer">Proceed to Payment</button>'
       +'</div>'
       +'<div style="height:2px;background:linear-gradient(90deg,transparent,#c9a24e,transparent)"></div>'
@@ -1517,6 +1525,9 @@ function openSimpleCheckout(callback) {
   });
   var st = document.getElementById('scState'); if(st) st.value = '';
   document.getElementById('scError').style.display = 'none';
+  var couponInput = document.getElementById('scCoupon'); if(couponInput) couponInput.value = '';
+  var couponMsg   = document.getElementById('scCouponMsg'); if(couponMsg) { couponMsg.style.display='none'; couponMsg.textContent=''; }
+  window._couponApplied = false;
   var shipEl = document.getElementById('scShippingInfo');
   if (shipEl) shipEl.remove();
   modal.style.display = 'flex';
@@ -1531,6 +1542,34 @@ function closeSimpleCheckout() {
   document.body.style.overflow = '';
 }
 
+async function applyCoupon() {
+  var code    = (document.getElementById('scCoupon')?.value || '').trim().toUpperCase();
+  var msgEl   = document.getElementById('scCouponMsg');
+  var shipping = window._checkoutShipping || 0;
+  if (!code) { if(msgEl){msgEl.textContent='Please enter a coupon code.';msgEl.style.color='#c0392b';msgEl.style.display='block';} return; }
+  var base = (location.hostname==='localhost'||location.hostname==='127.0.0.1') ? 'http://localhost:5000' : '';
+  try {
+    var r = await fetch(base+'/api/coupon/validate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({code:code, shipping:shipping})
+    });
+    var data = await r.json();
+    if (data.ok) {
+      window._checkoutShipping  = 0;
+      window._checkoutShipLabel = 'FREE ('+code+')';
+      window._couponApplied     = code;
+      if(msgEl){msgEl.textContent='\u2714 '+data.message;msgEl.style.color='#27ae60';msgEl.style.display='block';}
+      // Update shipping display
+      var shipEl = document.getElementById('scShippingInfo');
+      if(shipEl) shipEl.innerHTML = '<span style="color:#27ae60;font-weight:700">✔ Free Shipping Applied ('+code+')</span>';
+    } else {
+      window._couponApplied = false;
+      if(msgEl){msgEl.textContent='\u2718 '+(data.error||'Invalid code');msgEl.style.color='#c0392b';msgEl.style.display='block';}
+    }
+  } catch(e) {
+    if(msgEl){msgEl.textContent='Could not validate coupon. Please try again.';msgEl.style.color='#c0392b';msgEl.style.display='block';}
+  }
+}
 function submitSimpleCheckout() {
   var name    = document.getElementById('scName').value.trim();
   var phone   = document.getElementById('scPhone').value.trim();
@@ -1627,6 +1666,11 @@ async function _processBuyNow(customer) {
         });
         const result = await verify.json();
         if (result.ok) {
+          // If coupon was applied, increment the used counter
+          if (window._couponApplied) {
+            fetch(apiBase+'/api/coupon/use', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(function(){});
+            window._couponApplied = false;
+          }
           closeModal();
           showOrderComplete({
             order_id:       response.razorpay_order_id,

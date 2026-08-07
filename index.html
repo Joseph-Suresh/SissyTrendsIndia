@@ -286,10 +286,59 @@
   </div>
 </div>
 
+<!-- ── MARQUEE ── -->
+<div class="marquee-wrap">
+  <div class="marquee-track">
+    <span>Handpicked Sarees</span><span>Imitation Jewellery</span><span>Kanjivaram Silk</span>
+    <span>Banarasi Weaves</span><span>Bridal Collections</span><span>Festive Elegance</span>
+    <span>Editorial Style</span><span>Cultural + Modern</span><span>WhatsApp Orders</span>
+    <span>Handpicked Sarees</span><span>Imitation Jewellery</span><span>Kanjivaram Silk</span>
+    <span>Banarasi Weaves</span><span>Bridal Collections</span><span>Festive Elegance</span>
+    <span>Editorial Style</span><span>Cultural + Modern</span><span>WhatsApp Orders</span>
+  </div>
+</div>
+
+<!-- ── FREE SHIPPING CAMPAIGN BANNER ── -->
+<section id="campaignBanner" style="padding:48px 20px;background:linear-gradient(135deg,#7a1f2e 0%,#5c1520 50%,#7a1f2e 100%);text-align:center;position:relative;overflow:hidden;display:none">
+  <!-- Decorative gold lines -->
+  <div style="position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent,transparent 40px,rgba(201,162,78,.04) 40px,rgba(201,162,78,.04) 41px);pointer-events:none"></div>
+  <div style="position:relative;z-index:1;max-width:680px;margin:0 auto">
+    <div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.35em;color:rgba(201,162,78,.7);margin-bottom:10px">LIMITED TIME OFFER</div>
+    <h2 style="font-family:'Cormorant Garamond',serif;font-size:clamp(1.6rem,4vw,2.4rem);font-weight:400;color:#faf5ec;margin-bottom:8px;line-height:1.2">Free Shipping on Your First Order</h2>
+    <p style="font-family:'Jost',sans-serif;font-size:13px;color:rgba(250,245,236,.65);margin-bottom:20px;letter-spacing:.05em">Only for the first 50 orders — claim yours before it's gone.</p>
+
+    <!-- Counter -->
+    <div style="display:inline-flex;align-items:center;gap:16px;background:rgba(0,0,0,.25);border:1px solid rgba(201,162,78,.3);padding:12px 28px;margin-bottom:24px">
+      <div style="text-align:center">
+        <div id="campaignUsed" style="font-family:'Cinzel',serif;font-size:1.8rem;color:#c9a24e;line-height:1">—</div>
+        <div style="font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;color:rgba(250,245,236,.4);margin-top:4px">CLAIMED</div>
+      </div>
+      <div style="width:1px;height:40px;background:rgba(201,162,78,.25)"></div>
+      <div style="text-align:center">
+        <div id="campaignRemaining" style="font-family:'Cinzel',serif;font-size:1.8rem;color:#faf5ec;line-height:1">—</div>
+        <div style="font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;color:rgba(250,245,236,.4);margin-top:4px">REMAINING</div>
+      </div>
+    </div>
+
+    <!-- Coupon code -->
+    <div style="margin-bottom:24px">
+      <div style="font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.2em;color:rgba(250,245,236,.5);margin-bottom:8px;text-transform:uppercase">Use code at checkout</div>
+      <div style="display:inline-flex;align-items:center;gap:12px;background:rgba(201,162,78,.12);border:1.5px dashed rgba(201,162,78,.5);padding:10px 24px">
+        <span id="campaignCode" style="font-family:'Cinzel',serif;font-size:1.2rem;letter-spacing:.25em;color:#c9a24e">SHIP50</span>
+        <button onclick="copyCouponCode()" title="Copy code"
+          style="background:none;border:1px solid rgba(201,162,78,.4);color:rgba(201,162,78,.8);font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.1em;padding:4px 10px;cursor:pointer;text-transform:uppercase">Copy</button>
+      </div>
+    </div>
+
+    <a href="pages/collections.html"
+       style="display:inline-block;padding:13px 36px;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.25em;text-transform:uppercase;text-decoration:none;font-weight:600">
+      Shop Now &rarr;
+    </a>
+  </div>
+</section>
+
 <!-- ── FEATURED SAREES ── -->
 <section id="sarees" style="padding:100px 0;background:var(--ivory)">
-  <div class="section-wrap">
-    <div class="section-header">
       <span class="section-label reveal">Featured Collections</span>
       <div class="gold-divider reveal delay-1"></div>
       <h2 class="section-title reveal delay-2">The <em>Saree</em> Edit</h2>
@@ -932,6 +981,30 @@
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closeStyleMatcherPopup();
   });
+
+  // ── Campaign Banner ──
+  (async function loadCampaignBanner() {
+    try {
+      var base = (location.hostname==='localhost'||location.hostname==='127.0.0.1') ? 'http://localhost:5000' : '';
+      var r    = await fetch(base + '/api/coupon');
+      var cfg  = await r.json();
+      if (!cfg.active || cfg.used >= cfg.limit) return; // hide if inactive or exhausted
+      var remaining = cfg.limit - cfg.used;
+      document.getElementById('campaignUsed').textContent      = cfg.used;
+      document.getElementById('campaignRemaining').textContent  = remaining;
+      document.getElementById('campaignCode').textContent       = cfg.code;
+      document.getElementById('campaignBanner').style.display   = 'block';
+    } catch(e) { /* server not running locally — hide banner */ }
+  })();
+
+  function copyCouponCode() {
+    var code = document.getElementById('campaignCode').textContent;
+    navigator.clipboard.writeText(code).then(function() {
+      showToast('\u2714 Code copied: ' + code);
+    }).catch(function() {
+      showToast('Code: ' + code);
+    });
+  }
 </script>
 
 </body>

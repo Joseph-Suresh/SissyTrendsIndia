@@ -734,19 +734,73 @@ function showAdminToast(msg, isError) {
   setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-/* ── Analytics tab ── */
 async function loadAndRenderAnalytics() {
   const tabEl = document.getElementById('tab-analytics');
   if (!tabEl) return;
   tabEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(250,245,236,.4)">Loading…</div>';
   try {
-    const r = await fetch(`${API}/analytics`);
-    const data = await r.json();
+    const [anlRes, couponRes] = await Promise.all([
+      fetch(`${API}/analytics`),
+      fetch(`${API}/coupon`)
+    ]);
+    const data   = await anlRes.json();
+    const coupon = await couponRes.json();
     const events = data.events || [];
     const recent = data.recentlyViewed || [];
     const inqs   = data.inquiries || [];
+    const remaining = coupon.limit - coupon.used;
     tabEl.innerHTML = `
       <h2 class="section-heading">Analytics</h2>
+
+      <!-- ── Campaign Coupon Control ── -->
+      <div style="background:rgba(201,162,78,.06);border:1px solid rgba(201,162,78,.2);padding:24px;margin-bottom:28px">
+        <div style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:.25em;color:#c9a24e;margin-bottom:16px">SHIP50 FREE SHIPPING CAMPAIGN</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:16px;margin-bottom:20px">
+          <div style="text-align:center;padding:14px;background:rgba(0,0,0,.2)">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:2rem;color:#c9a24e">${coupon.used}</div>
+            <div style="font-size:9px;letter-spacing:.15em;color:rgba(250,245,236,.4);margin-top:4px">USED</div>
+          </div>
+          <div style="text-align:center;padding:14px;background:rgba(0,0,0,.2)">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:2rem;color:#faf5ec">${remaining}</div>
+            <div style="font-size:9px;letter-spacing:.15em;color:rgba(250,245,236,.4);margin-top:4px">REMAINING</div>
+          </div>
+          <div style="text-align:center;padding:14px;background:rgba(0,0,0,.2)">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:2rem;color:#faf5ec">${coupon.limit}</div>
+            <div style="font-size:9px;letter-spacing:.15em;color:rgba(250,245,236,.4);margin-top:4px">LIMIT</div>
+          </div>
+          <div style="text-align:center;padding:14px;background:rgba(0,0,0,.2)">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:1.1rem;color:${coupon.active?'#27ae60':'#c0392b'};margin-top:6px">${coupon.active?'ACTIVE':'PAUSED'}</div>
+            <div style="font-size:9px;letter-spacing:.15em;color:rgba(250,245,236,.4);margin-top:4px">STATUS</div>
+          </div>
+        </div>
+        <!-- Admin controls -->
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+          <div>
+            <div style="font-size:9px;letter-spacing:.15em;color:rgba(250,245,236,.4);margin-bottom:5px">ADJUST USED COUNT</div>
+            <div style="display:flex;gap:6px">
+              <input id="couponUsedInput" type="number" min="0" max="${coupon.limit}" value="${coupon.used}"
+                style="width:80px;padding:8px 10px;background:rgba(250,245,236,.07);border:1px solid rgba(201,162,78,.3);color:#faf5ec;font-family:'Jost',sans-serif;font-size:13px;outline:none"/>
+              <button onclick="updateCoupon({used: parseInt(document.getElementById('couponUsedInput').value)})"
+                style="padding:8px 14px;background:#c9a24e;border:none;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.1em;cursor:pointer">Save</button>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:9px;letter-spacing:.15em;color:rgba(250,245,236,.4);margin-bottom:5px">ADJUST LIMIT</div>
+            <div style="display:flex;gap:6px">
+              <input id="couponLimitInput" type="number" min="1" value="${coupon.limit}"
+                style="width:80px;padding:8px 10px;background:rgba(250,245,236,.07);border:1px solid rgba(201,162,78,.3);color:#faf5ec;font-family:'Jost',sans-serif;font-size:13px;outline:none"/>
+              <button onclick="updateCoupon({limit: parseInt(document.getElementById('couponLimitInput').value)})"
+                style="padding:8px 14px;background:#c9a24e;border:none;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.1em;cursor:pointer">Save</button>
+            </div>
+          </div>
+          <button onclick="updateCoupon({active: ${coupon.active?0:1}})"
+            style="padding:8px 18px;background:${coupon.active?'rgba(192,57,43,.3)':'rgba(39,174,96,.3)'};border:1px solid ${coupon.active?'rgba(192,57,43,.5)':'rgba(39,174,96,.5)'};color:#faf5ec;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.1em;cursor:pointer">
+            ${coupon.active ? '⏸ Pause Campaign' : '▶ Resume Campaign'}
+          </button>
+        </div>
+        <div id="couponSaveMsg" style="display:none;font-family:'Jost',sans-serif;font-size:11px;color:#27ae60;margin-top:10px"></div>
+      </div>
+
       <div class="anl-grid">
         <div class="anl-card">
           <div class="anl-title">Top Events</div>
@@ -762,6 +816,22 @@ async function loadAndRenderAnalytics() {
         ${inqs.slice(0,10).map(i => `<div class="anl-row"><span>${i.product_name||'—'} · ${i.category||'—'}</span><span style="font-size:11px;color:rgba(201,162,78,.5)">${(i.created_at||'').substring(0,10)}</span></div>`).join('') || '<div style="color:rgba(250,245,236,.3);font-size:12px">No inquiries yet</div>'}
       </div>`;
   } catch { tabEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(220,80,80,.6)">Could not load analytics — is the server running?</div>'; }
+}
+
+async function updateCoupon(changes) {
+  try {
+    const r = await fetch(`${API}/coupon/admin`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(changes)
+    });
+    const data = await r.json();
+    const msg = document.getElementById('couponSaveMsg');
+    if (msg) { msg.textContent = '✔ Saved — Used: '+data.used+' / '+data.limit; msg.style.display='block'; setTimeout(()=>{msg.style.display='none';},3000); }
+    loadAndRenderAnalytics(); // refresh
+  } catch(e) {
+    alert('Could not save. Is the server running?');
+  }
 }
 
 /* ── Inquiries tab ── */

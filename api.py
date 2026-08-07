@@ -739,6 +739,14 @@ class Handler(BaseHTTPRequestHandler):
                 'inquiries':     [dict(r) for r in inqs],
             })
 
+        elif path == '/api/coupon':
+            # Returns current coupon status: code, limit, used count, active flag
+            with get_db() as db:
+                row = db.execute("SELECT * FROM coupon_config WHERE id=1").fetchone()
+            if row:
+                send_json(self, dict(row))
+            else:
+                send_json(self, {'code':'SHIP50','limit':50,'used':0,'active':1})
 
         elif path == '/api/products':
             with get_db() as db:
@@ -824,6 +832,47 @@ class Handler(BaseHTTPRequestHandler):
                      body.get('type','product'))
                 )
             send_json(self, {'ok':True}, 201)
+
+        elif path == '/api/coupon/validate':
+            # Validate coupon code at checkout — returns ok + savings amount
+            code    = (body.get('code','') or '').strip().upper()
+            shipping = int(body.get('shipping', 0) or 0)
+            with get_db() as db:
+                row = db.execute("SELECT * FROM coupon_config WHERE id=1").fetchone()
+            if not row:
+                send_json(self, {'ok': False, 'error': 'Coupon not configured'}); return
+            cfg = dict(row)
+            if not cfg.get('active', 1):
+                send_json(self, {'ok': False, 'error': 'This offer has ended'}); return
+            if cfg.get('used', 0) >= cfg.get('limit', 50):
+                send_json(self, {'ok': False, 'error': 'Sorry, all 50 free shipping slots have been claimed!'}); return
+            if code != (cfg.get('code','') or '').upper():
+                send_json(self, {'ok': False, 'error': 'Invalid coupon code'}); return
+            send_json(self, {'ok': True, 'discount': shipping, 'message': 'Free shipping applied!'})
+
+        elif path == '/api/coupon/use':
+            # Called after successful payment to increment used count
+            with get_db() as db:
+                db.execute("UPDATE coupon_config SET used = used + 1 WHERE id=1 AND used < \"limit\"")
+            send_json(self, {'ok': True})
+
+        elif path == '/api/coupon/admin':
+            # Admin: update coupon settings (used count, limit, active toggle)
+            with get_db() as db:
+                row = db.execute("SELECT * FROM coupon_config WHERE id=1").fetchone()
+                if not row:
+                    db.execute("INSERT INTO coupon_config (id,code,limit,used,active) VALUES (1,'SHIP50',50,0,1)")
+                updates = []
+                vals    = []
+                if 'used'   in body: updates.append('used=?');   vals.append(int(body['used']))
+                if 'limit'  in body: updates.append('"limit"=?'); vals.append(int(body['limit']))
+                if 'active' in body: updates.append('active=?'); vals.append(int(body['active']))
+                if 'code'   in body: updates.append('code=?');   vals.append(str(body['code']).strip().upper())
+                if updates:
+                    vals.append(1)
+                    db.execute(f"UPDATE coupon_config SET {','.join(updates)} WHERE id=?", vals)
+                row = db.execute("SELECT * FROM coupon_config WHERE id=1").fetchone()
+            send_json(self, dict(row))
 
         elif path == '/api/orders/attempt':
             with get_db() as db:
@@ -994,6 +1043,18 @@ if __name__ == '__main__':
                 added_at   TEXT DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(session_id, product_id)
             )""")
+        # Migrate coupon_config table for existing DBs
+        _db.execute("""
+            CREATE TABLE IF NOT EXISTS coupon_config (
+                id      INTEGER PRIMARY KEY,
+                code    TEXT    DEFAULT 'SHIP50',
+                "limit" INTEGER DEFAULT 50,
+                used    INTEGER DEFAULT 0,
+                active  INTEGER DEFAULT 1
+            )""")
+        if not _db.execute("SELECT 1 FROM coupon_config WHERE id=1").fetchone():
+            _db.execute("INSERT INTO coupon_config (id,code,\"limit\",used,active) VALUES (1,'SHIP50',50,0,1)")
+            print("  Migrated: created coupon_config table with SHIP50 campaign")
 
     print(f"""
   ╔══════════════════════════════════════════════╗
