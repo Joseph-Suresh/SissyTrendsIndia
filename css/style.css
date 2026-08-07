@@ -50,9 +50,19 @@ h1,h2,h3{font-family:var(--font-display);font-weight:400}
 /* ═══════════════════════════════════════════════
    NAVBAR
 ═══════════════════════════════════════════════ */
+#announcementBar{
+  position:fixed;top:0;left:0;right:0;z-index:850;
+  transition:transform 0.35s ease,opacity 0.35s ease;
+}
+#announcementBar.hidden{
+  transform:translateY(-100%);
+  opacity:0;
+  pointer-events:none;
+}
 #navbar{
   position:fixed;top:0;left:0;right:0;z-index:800;
-  padding:18px 0;transition:all 0.4s var(--ease);
+  padding:18px 0;
+  transition:padding 0.4s var(--ease),background 0.4s var(--ease),box-shadow 0.4s var(--ease);
 }
 #navbar.scrolled{
   background:rgba(250,246,240,0.97);

@@ -249,6 +249,9 @@
     </div>
   </div>
 
+  <!-- ANALYTICS -->
+  <div class="admin-section" id="tab-analytics"></div>
+
   <!-- ORDERS -->
   <div class="admin-section" id="tab-orders"></div>
 
@@ -754,7 +757,7 @@ async function loadAndRenderAnalytics() {
 
       <!-- ── Campaign Coupon Control ── -->
       <div style="background:rgba(201,162,78,.06);border:1px solid rgba(201,162,78,.2);padding:24px;margin-bottom:28px">
-        <div style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:.25em;color:#c9a24e;margin-bottom:16px">SHIP50 FREE SHIPPING CAMPAIGN</div>
+        <div style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:.25em;color:#c9a24e;margin-bottom:16px">STSHIP50 FREE SHIPPING CAMPAIGN</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:16px;margin-bottom:20px">
           <div style="text-align:center;padding:14px;background:rgba(0,0,0,.2)">
             <div style="font-family:'Cormorant Garamond',serif;font-size:2rem;color:#c9a24e">${coupon.used}</div>
@@ -775,6 +778,15 @@ async function loadAndRenderAnalytics() {
         </div>
         <!-- Admin controls -->
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+          <div>
+            <div style="font-size:9px;letter-spacing:.15em;color:rgba(250,245,236,.4);margin-bottom:5px">COUPON CODE</div>
+            <div style="display:flex;gap:6px">
+              <input id="couponCodeInput" type="text" value="${coupon.code||''}"
+                style="width:120px;padding:8px 10px;background:rgba(250,245,236,.07);border:1px solid rgba(201,162,78,.3);color:#faf5ec;font-family:'Jost',sans-serif;font-size:13px;outline:none;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"/>
+              <button onclick="updateCoupon({code: document.getElementById('couponCodeInput').value})"
+                style="padding:8px 14px;background:#c9a24e;border:none;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.1em;cursor:pointer">Save</button>
+            </div>
+          </div>
           <div>
             <div style="font-size:9px;letter-spacing:.15em;color:rgba(250,245,236,.4);margin-bottom:5px">ADJUST USED COUNT</div>
             <div style="display:flex;gap:6px">

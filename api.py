@@ -364,6 +364,38 @@ class Handler(BaseHTTPRequestHandler):
                 except:
                     send_json(self, [])
 
+        elif path == '/api/analytics':
+            try:
+                with get_db() as db:
+                    events = db.execute(
+                        "SELECT event_type,product_id,COUNT(*) as count "
+                        "FROM analytics GROUP BY event_type,product_id ORDER BY count DESC"
+                    ).fetchall()
+                    recent = db.execute(
+                        "SELECT * FROM recently_viewed ORDER BY viewed_at DESC LIMIT 10"
+                    ).fetchall()
+                    inqs   = db.execute(
+                        "SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 500"
+                    ).fetchall()
+                send_json(self, {
+                    'events':        [dict(r) for r in events],
+                    'recentlyViewed':[dict(r) for r in recent],
+                    'inquiries':     [dict(r) for r in inqs],
+                })
+            except Exception as e:
+                send_json(self, {'events':[],'recentlyViewed':[],'inquiries':[],'error':str(e)})
+
+        elif path == '/api/coupon':
+            try:
+                with get_db() as db:
+                    row = db.execute("SELECT * FROM coupon_config WHERE id=1").fetchone()
+                if row:
+                    send_json(self, dict(row))
+                else:
+                    send_json(self, {'code':'STSHIP50','limit':50,'used':0,'active':1})
+            except Exception:
+                send_json(self, {'code':'STSHIP50','limit':50,'used':0,'active':1})
+
         else:
             self._serve_file(p.path)
 
@@ -857,17 +889,17 @@ class Handler(BaseHTTPRequestHandler):
             send_json(self, {'ok': True})
 
         elif path == '/api/coupon/admin':
-            # Admin: update coupon settings (used count, limit, active toggle)
+            # Admin: update coupon settings
             with get_db() as db:
                 row = db.execute("SELECT * FROM coupon_config WHERE id=1").fetchone()
                 if not row:
-                    db.execute("INSERT INTO coupon_config (id,code,limit,used,active) VALUES (1,'SHIP50',50,0,1)")
+                    db.execute("INSERT INTO coupon_config (id,code,\"limit\",used,active) VALUES (1,'STSHIP50',50,0,1)")
                 updates = []
                 vals    = []
-                if 'used'   in body: updates.append('used=?');   vals.append(int(body['used']))
-                if 'limit'  in body: updates.append('"limit"=?'); vals.append(int(body['limit']))
-                if 'active' in body: updates.append('active=?'); vals.append(int(body['active']))
-                if 'code'   in body: updates.append('code=?');   vals.append(str(body['code']).strip().upper())
+                if 'used'   in body: updates.append('used=?');       vals.append(int(body['used']))
+                if 'limit'  in body: updates.append('"limit"=?');    vals.append(int(body['limit']))
+                if 'active' in body: updates.append('active=?');     vals.append(int(body['active']))
+                if 'code'   in body: updates.append('code=?');       vals.append(str(body['code']).strip().upper())
                 if updates:
                     vals.append(1)
                     db.execute(f"UPDATE coupon_config SET {','.join(updates)} WHERE id=?", vals)
@@ -1053,8 +1085,8 @@ if __name__ == '__main__':
                 active  INTEGER DEFAULT 1
             )""")
         if not _db.execute("SELECT 1 FROM coupon_config WHERE id=1").fetchone():
-            _db.execute("INSERT INTO coupon_config (id,code,\"limit\",used,active) VALUES (1,'SHIP50',50,0,1)")
-            print("  Migrated: created coupon_config table with SHIP50 campaign")
+            _db.execute("INSERT INTO coupon_config (id,code,\"limit\",used,active) VALUES (1,'STSHIP50',50,0,1)")
+            print("  Migrated: created coupon_config table with STSHIP50 campaign")
 
     print(f"""
   ╔══════════════════════════════════════════════╗

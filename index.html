@@ -227,6 +227,64 @@
   </style>
 </head>
 <body>
+<!-- ── TOP ANNOUNCEMENT BAR ── -->
+<div id="announcementBar" style="background:linear-gradient(90deg,#5c1520,#7a1f2e,#5c1520);color:#faf5ec;overflow:hidden;height:38px;display:flex;align-items:center">
+  <button onclick="dismissAnnBar()" title="Dismiss"
+    style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;color:rgba(250,245,236,.45);font-size:18px;cursor:pointer;z-index:2;line-height:1;padding:2px 6px">&times;</button>
+  <div style="flex:1;text-align:center;position:relative;height:38px;overflow:hidden">
+    <div id="annMsg0" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Jost',sans-serif;font-size:12px;letter-spacing:.1em;transition:opacity .6s,transform .6s">
+      &#127881;&nbsp;<strong style="color:#c9a24e">Festive Season</strong>&nbsp;&mdash;&nbsp;Free Shipping on first 50 orders! Use code&nbsp;<strong id="annCouponCode" style="color:#c9a24e;letter-spacing:.2em">STSHIP50</strong>
+    </div>
+    <div id="annMsg1" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Jost',sans-serif;font-size:12px;letter-spacing:.1em;opacity:0;transform:translateY(10px);transition:opacity .6s,transform .6s">
+      &#10024;&nbsp;Handpicked Sarees &middot; Jewellery &middot; D&eacute;cor &mdash; Coimbatore Boutique
+    </div>
+    <div id="annMsg2" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Jost',sans-serif;font-size:12px;letter-spacing:.1em;opacity:0;transform:translateY(10px);transition:opacity .6s,transform .6s">
+      &#128230;&nbsp;Cash on Delivery Available Across India &middot; WhatsApp Orders Welcome
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  // Slide messages
+  var m=[document.getElementById('annMsg0'),document.getElementById('annMsg1'),document.getElementById('annMsg2')];
+  var c=0;
+  function nx(){
+    m[c].style.opacity='0';m[c].style.transform='translateY(-10px)';
+    c=(c+1)%m.length;
+    m[c].style.transform='translateY(10px)';m[c].style.opacity='0';
+    setTimeout(function(){m[c].style.opacity='1';m[c].style.transform='translateY(0)';},60);
+  }
+  setInterval(nx,3400);
+
+  // Push navbar below bar using direct style — no CSS class needed
+  var BAR_H = 38;
+  var nav = document.getElementById('navbar');
+  if(nav) nav.style.top = BAR_H+'px';
+
+  var collapsed = false;
+  window.addEventListener('scroll',function(){
+    var nav=document.getElementById('navbar');
+    var bar=document.getElementById('announcementBar');
+    if(!nav) return;
+    if(window.scrollY > BAR_H && !collapsed){
+      collapsed = true;
+      if(bar) bar.classList.add('hidden');
+      nav.style.top = '0';
+    } else if(window.scrollY === 0 && collapsed){
+      collapsed = false;
+      if(bar) bar.classList.remove('hidden');
+      nav.style.top = BAR_H+'px';
+    }
+  },{passive:true});
+})();
+
+function dismissAnnBar(){
+  var bar=document.getElementById('announcementBar');
+  var nav=document.getElementById('navbar');
+  if(bar){ bar.classList.add('hidden'); bar.style.display='none'; }
+  if(nav) nav.style.top='0';
+}
+</script>
 
 <div id="navPlaceholder"></div>
 
@@ -286,59 +344,62 @@
   </div>
 </div>
 
-<!-- ── MARQUEE ── -->
-<div class="marquee-wrap">
-  <div class="marquee-track">
-    <span>Handpicked Sarees</span><span>Imitation Jewellery</span><span>Kanjivaram Silk</span>
-    <span>Banarasi Weaves</span><span>Bridal Collections</span><span>Festive Elegance</span>
-    <span>Editorial Style</span><span>Cultural + Modern</span><span>WhatsApp Orders</span>
-    <span>Handpicked Sarees</span><span>Imitation Jewellery</span><span>Kanjivaram Silk</span>
-    <span>Banarasi Weaves</span><span>Bridal Collections</span><span>Festive Elegance</span>
-    <span>Editorial Style</span><span>Cultural + Modern</span><span>WhatsApp Orders</span>
+<!-- ── HOT CATEGORY CARDS ── -->
+<div id="hotLinksBar" style="background:#faf5ec;border-top:1px solid rgba(201,162,78,.1);border-bottom:1px solid rgba(201,162,78,.12);padding:20px 0 18px">
+  <div style="max-width:1360px;margin:0 auto;padding:0 32px">
+    <div style="display:flex;align-items:center;margin-bottom:14px;gap:10px">
+      <span style="font-family:'Jost',sans-serif;font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:#c9a24e">&#128293; HOT RIGHT NOW</span>
+      <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(201,162,78,.3),transparent)"></div>
+    </div>
+    <div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;justify-content:space-between">
+      <a href="pages/categories.html?cat=sarees&sub=soft-silk" style="flex:0 0 130px;text-decoration:none;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);transition:transform .22s,box-shadow .22s;display:block;position:relative;height:165px;background:#2a1a0e" onmouseover="this.style.transform='translateY(-5px)';this.style.boxShadow='0 12px 30px rgba(122,31,46,.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px rgba(0,0,0,.15)'"><img src="/Images/SareeImages/SAR-025_pose2.jpg" alt="Soft Silk Sarees" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.opacity='0.3'"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.75) 0%,rgba(0,0,0,.1) 55%,transparent 100%)"></div><div style="position:absolute;bottom:0;left:0;right:0;padding:8px 8px 10px;text-align:center"><div style="font-family:'Jost',sans-serif;font-size:10px;color:#c9a24e;letter-spacing:.05em;font-weight:600;line-height:1.3">Soft Silk Sarees</div><div style="font-family:'Jost',sans-serif;font-size:9px;color:rgba(255,255,255,.75);margin-top:2px;letter-spacing:.03em">சாஃப்ட் சில்க்</div></div></a>
+      <a href="pages/categories.html?cat=sarees&sub=Maheswari+Silk+Cotton" style="flex:0 0 130px;text-decoration:none;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);transition:transform .22s,box-shadow .22s;display:block;position:relative;height:165px;background:#2a1a0e" onmouseover="this.style.transform='translateY(-5px)';this.style.boxShadow='0 12px 30px rgba(122,31,46,.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px rgba(0,0,0,.15)'"><img src="/Images/SareeImages/SAR-031_pose1.jpeg" alt="Maheshwari Cotton" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.opacity='0.3'"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.75) 0%,rgba(0,0,0,.1) 55%,transparent 100%)"></div><div style="position:absolute;bottom:0;left:0;right:0;padding:8px 8px 10px;text-align:center"><div style="font-family:'Jost',sans-serif;font-size:10px;color:#c9a24e;letter-spacing:.05em;font-weight:600;line-height:1.3">Maheshwari Cotton</div><div style="font-family:'Jost',sans-serif;font-size:9px;color:rgba(255,255,255,.75);margin-top:2px;letter-spacing:.03em">மகேஷ்வரி</div></div></a>
+      <a href="pages/categories.html?cat=jewellery&sub=necklace-sets" style="flex:0 0 130px;text-decoration:none;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);transition:transform .22s,box-shadow .22s;display:block;position:relative;height:165px;background:#2a1a0e" onmouseover="this.style.transform='translateY(-5px)';this.style.boxShadow='0 12px 30px rgba(122,31,46,.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px rgba(0,0,0,.15)'"><img src="/Images/Imitation jewels/JWL-016_1.jpg" alt="Necklace Sets" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.opacity='0.3'"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.75) 0%,rgba(0,0,0,.1) 55%,transparent 100%)"></div><div style="position:absolute;bottom:0;left:0;right:0;padding:8px 8px 10px;text-align:center"><div style="font-family:'Jost',sans-serif;font-size:10px;color:#c9a24e;letter-spacing:.05em;font-weight:600;line-height:1.3">Necklace Sets</div><div style="font-family:'Jost',sans-serif;font-size:9px;color:rgba(255,255,255,.75);margin-top:2px;letter-spacing:.03em">நெக்லஸ்</div></div></a>
+      <a href="pages/categories.html?cat=jewellery&sub=full-sets" style="flex:0 0 130px;text-decoration:none;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);transition:transform .22s,box-shadow .22s;display:block;position:relative;height:165px;background:#2a1a0e" onmouseover="this.style.transform='translateY(-5px)';this.style.boxShadow='0 12px 30px rgba(122,31,46,.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px rgba(0,0,0,.15)'"><img src="/Images/Imitation jewels/JWL-022_1.jpg" alt="Temple Jewellery" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.opacity='0.3'"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.75) 0%,rgba(0,0,0,.1) 55%,transparent 100%)"></div><div style="position:absolute;bottom:0;left:0;right:0;padding:8px 8px 10px;text-align:center"><div style="font-family:'Jost',sans-serif;font-size:10px;color:#c9a24e;letter-spacing:.05em;font-weight:600;line-height:1.3">Temple Jewellery</div><div style="font-family:'Jost',sans-serif;font-size:9px;color:rgba(255,255,255,.75);margin-top:2px;letter-spacing:.03em">டெம்பிள் ஜுவல்</div></div></a>
+      <a href="pages/categories.html?cat=sarees&sub=Pochampally+Ikat" style="flex:0 0 130px;text-decoration:none;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);transition:transform .22s,box-shadow .22s;display:block;position:relative;height:165px;background:#2a1a0e" onmouseover="this.style.transform='translateY(-5px)';this.style.boxShadow='0 12px 30px rgba(122,31,46,.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px rgba(0,0,0,.15)'"><img src="/Images/SareeImages/SAR-043_pose1.jpeg" alt="Pochampally Ikat" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.opacity='0.3'"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.75) 0%,rgba(0,0,0,.1) 55%,transparent 100%)"></div><div style="position:absolute;bottom:0;left:0;right:0;padding:8px 8px 10px;text-align:center"><div style="font-family:'Jost',sans-serif;font-size:10px;color:#c9a24e;letter-spacing:.05em;font-weight:600;line-height:1.3">Pochampally Ikat</div><div style="font-family:'Jost',sans-serif;font-size:9px;color:rgba(255,255,255,.75);margin-top:2px;letter-spacing:.03em">போச்சம்பல்லி</div></div></a>
+      <a href="pages/categories.html?cat=jewellery&sub=bridal" style="flex:0 0 130px;text-decoration:none;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);transition:transform .22s,box-shadow .22s;display:block;position:relative;height:165px;background:#2a1a0e" onmouseover="this.style.transform='translateY(-5px)';this.style.boxShadow='0 12px 30px rgba(122,31,46,.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px rgba(0,0,0,.15)'"><img src="/Images/Imitation jewels/JWL-020_1.jpg" alt="Bridal Sets" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.opacity='0.3'"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.75) 0%,rgba(0,0,0,.1) 55%,transparent 100%)"></div><div style="position:absolute;bottom:0;left:0;right:0;padding:8px 8px 10px;text-align:center"><div style="font-family:'Jost',sans-serif;font-size:10px;color:#c9a24e;letter-spacing:.05em;font-weight:600;line-height:1.3">Bridal Sets</div><div style="font-family:'Jost',sans-serif;font-size:9px;color:rgba(255,255,255,.75);margin-top:2px;letter-spacing:.03em">பிரைடல் செட்</div></div></a>
+      <a href="pages/categories.html?cat=sarees&sub=Cool+Cotton" style="flex:0 0 130px;text-decoration:none;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);transition:transform .22s,box-shadow .22s;display:block;position:relative;height:165px;background:#2a1a0e" onmouseover="this.style.transform='translateY(-5px)';this.style.boxShadow='0 12px 30px rgba(122,31,46,.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px rgba(0,0,0,.15)'"><img src="/Images/SareeImages/SAR-050_pose1.jpeg" alt="Cool Cotton" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.opacity='0.3'"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.75) 0%,rgba(0,0,0,.1) 55%,transparent 100%)"></div><div style="position:absolute;bottom:0;left:0;right:0;padding:8px 8px 10px;text-align:center"><div style="font-family:'Jost',sans-serif;font-size:10px;color:#c9a24e;letter-spacing:.05em;font-weight:600;line-height:1.3">Cool Cotton</div><div style="font-family:'Jost',sans-serif;font-size:9px;color:rgba(255,255,255,.75);margin-top:2px;letter-spacing:.03em">கூல் காட்டன்</div></div></a>
+      <a href="pages/categories.html?cat=decor" style="flex:0 0 130px;text-decoration:none;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);transition:transform .22s,box-shadow .22s;display:block;position:relative;height:165px;background:#2a1a0e" onmouseover="this.style.transform='translateY(-5px)';this.style.boxShadow='0 12px 30px rgba(122,31,46,.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px rgba(0,0,0,.15)'"><img src="/Images/Decorative handcrafts/Diya.webp" alt="Festive Decor" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.opacity='0.3'"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.75) 0%,rgba(0,0,0,.1) 55%,transparent 100%)"></div><div style="position:absolute;bottom:0;left:0;right:0;padding:8px 8px 10px;text-align:center"><div style="font-family:'Jost',sans-serif;font-size:10px;color:#c9a24e;letter-spacing:.05em;font-weight:600;line-height:1.3">Festive Decor</div><div style="font-family:'Jost',sans-serif;font-size:9px;color:rgba(255,255,255,.75);margin-top:2px;letter-spacing:.03em">டெக்கர்</div></div></a>
+    </div>
   </div>
 </div>
-
 <!-- ── FREE SHIPPING CAMPAIGN BANNER ── -->
-<section id="campaignBanner" style="padding:48px 20px;background:linear-gradient(135deg,#7a1f2e 0%,#5c1520 50%,#7a1f2e 100%);text-align:center;position:relative;overflow:hidden;display:none">
-  <!-- Decorative gold lines -->
-  <div style="position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent,transparent 40px,rgba(201,162,78,.04) 40px,rgba(201,162,78,.04) 41px);pointer-events:none"></div>
-  <div style="position:relative;z-index:1;max-width:680px;margin:0 auto">
-    <div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.35em;color:rgba(201,162,78,.7);margin-bottom:10px">LIMITED TIME OFFER</div>
-    <h2 style="font-family:'Cormorant Garamond',serif;font-size:clamp(1.6rem,4vw,2.4rem);font-weight:400;color:#faf5ec;margin-bottom:8px;line-height:1.2">Free Shipping on Your First Order</h2>
-    <p style="font-family:'Jost',sans-serif;font-size:13px;color:rgba(250,245,236,.65);margin-bottom:20px;letter-spacing:.05em">Only for the first 50 orders — claim yours before it's gone.</p>
-
-    <!-- Counter -->
-    <div style="display:inline-flex;align-items:center;gap:16px;background:rgba(0,0,0,.25);border:1px solid rgba(201,162,78,.3);padding:12px 28px;margin-bottom:24px">
-      <div style="text-align:center">
-        <div id="campaignUsed" style="font-family:'Cinzel',serif;font-size:1.8rem;color:#c9a24e;line-height:1">—</div>
-        <div style="font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;color:rgba(250,245,236,.4);margin-top:4px">CLAIMED</div>
+<section id="campaignBanner" style="position:relative;overflow:hidden;display:none;min-height:380px">
+  <!-- Background image -->
+  <img src="Images/Promotions/Banner for festive offer.png" alt="Free Shipping Campaign"
+       style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center"
+       onerror="this.style.display='none'"/>
+  <!-- Dark overlay for text legibility -->
+  <div style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(26,10,6,.82) 0%,rgba(26,10,6,.5) 55%,rgba(26,10,6,.1) 100%)"></div>
+  <!-- Content -->
+  <div style="position:relative;z-index:2;max-width:1200px;margin:0 auto;padding:60px 48px;display:flex;flex-direction:column;justify-content:center;min-height:380px">
+    <div style="max-width:520px">
+      <div style="font-family:'Cinzel',serif;font-size:9px;letter-spacing:.4em;color:#c9a24e;margin-bottom:14px">LIMITED TIME — FIRST 50 ORDERS</div>
+      <h2 style="font-family:'Cormorant Garamond',serif;font-size:clamp(2rem,4.5vw,3rem);font-weight:400;color:#faf5ec;margin-bottom:12px;line-height:1.15">Free Shipping<br><em>on Your First Order</em></h2>
+      <p style="font-family:'Jost',sans-serif;font-size:12px;color:rgba(250,245,236,.6);margin-bottom:28px;letter-spacing:.08em;line-height:1.7">Celebrate the festive season with SissyTrends.<br>Use code at checkout to waive shipping.</p>
+      <!-- Coupon pill -->
+      <div style="display:inline-flex;align-items:center;gap:14px;margin-bottom:28px">
+        <div style="border:1px dashed rgba(201,162,78,.6);padding:10px 22px;display:flex;align-items:center;gap:12px">
+          <span id="campaignCode" style="font-family:'Cinzel',serif;font-size:1rem;letter-spacing:.3em;color:#c9a24e">STSHIP50</span>
+          <button onclick="copyCouponCode()"
+            style="background:rgba(201,162,78,.15);border:1px solid rgba(201,162,78,.4);color:rgba(201,162,78,.9);font-family:'Jost',sans-serif;font-size:8px;letter-spacing:.15em;padding:4px 10px;cursor:pointer;text-transform:uppercase">
+            Copy
+          </button>
+        </div>
       </div>
-      <div style="width:1px;height:40px;background:rgba(201,162,78,.25)"></div>
-      <div style="text-align:center">
-        <div id="campaignRemaining" style="font-family:'Cinzel',serif;font-size:1.8rem;color:#faf5ec;line-height:1">—</div>
-        <div style="font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;color:rgba(250,245,236,.4);margin-top:4px">REMAINING</div>
-      </div>
+      <br>
+      <a href="pages/collections.html"
+         style="display:inline-block;padding:13px 32px;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.25em;text-transform:uppercase;text-decoration:none;font-weight:700">
+        Shop the Festive Edit &rarr;
+      </a>
     </div>
-
-    <!-- Coupon code -->
-    <div style="margin-bottom:24px">
-      <div style="font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.2em;color:rgba(250,245,236,.5);margin-bottom:8px;text-transform:uppercase">Use code at checkout</div>
-      <div style="display:inline-flex;align-items:center;gap:12px;background:rgba(201,162,78,.12);border:1.5px dashed rgba(201,162,78,.5);padding:10px 24px">
-        <span id="campaignCode" style="font-family:'Cinzel',serif;font-size:1.2rem;letter-spacing:.25em;color:#c9a24e">SHIP50</span>
-        <button onclick="copyCouponCode()" title="Copy code"
-          style="background:none;border:1px solid rgba(201,162,78,.4);color:rgba(201,162,78,.8);font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.1em;padding:4px 10px;cursor:pointer;text-transform:uppercase">Copy</button>
-      </div>
-    </div>
-
-    <a href="pages/collections.html"
-       style="display:inline-block;padding:13px 36px;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.25em;text-transform:uppercase;text-decoration:none;font-weight:600">
-      Shop Now &rarr;
-    </a>
   </div>
 </section>
 
 <!-- ── FEATURED SAREES ── -->
 <section id="sarees" style="padding:100px 0;background:var(--ivory)">
+  <div class="section-wrap">
+    <div class="section-header">
       <span class="section-label reveal">Featured Collections</span>
       <div class="gold-divider reveal delay-1"></div>
       <h2 class="section-title reveal delay-2">The <em>Saree</em> Edit</h2>
@@ -982,19 +1043,25 @@
     if (e.key === 'Escape') closeStyleMatcherPopup();
   });
 
-  // ── Campaign Banner ──
+  // ── Campaign Banner + Announcement Bar: fetch coupon code dynamically ──
   (async function loadCampaignBanner() {
     try {
       var base = (location.hostname==='localhost'||location.hostname==='127.0.0.1') ? 'http://localhost:5000' : '';
       var r    = await fetch(base + '/api/coupon');
       var cfg  = await r.json();
-      if (!cfg.active || cfg.used >= cfg.limit) return; // hide if inactive or exhausted
-      var remaining = cfg.limit - cfg.used;
-      document.getElementById('campaignUsed').textContent      = cfg.used;
-      document.getElementById('campaignRemaining').textContent  = remaining;
-      document.getElementById('campaignCode').textContent       = cfg.code;
-      document.getElementById('campaignBanner').style.display   = 'block';
-    } catch(e) { /* server not running locally — hide banner */ }
+      var code = (cfg.code || 'STSHIP50').toUpperCase();
+      // Update announcement bar
+      var annEl = document.getElementById('annCouponCode');
+      if (annEl) annEl.textContent = code;
+      // Update campaign banner
+      var campEl = document.getElementById('campaignCode');
+      if (campEl) campEl.textContent = code;
+      // Show banner if active and slots remain
+      if (cfg.active && cfg.used < cfg.limit) {
+        var banner = document.getElementById('campaignBanner');
+        if (banner) banner.style.display = 'block';
+      }
+    } catch(e) { /* server not running — show static fallback */ }
   })();
 
   function copyCouponCode() {
