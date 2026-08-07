@@ -1985,8 +1985,8 @@ async function getSubcategoriesAsync(cat) {
 function getSubcategories(cat) { return SUBCATEGORIES[cat] || []; }
 
 function getRawProducts() {
-  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || getDefaultProducts(); }
-  catch { return getDefaultProducts(); }
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; }
+  catch { return []; }
 }
 function getProducts() { return migrateProductIds(); }
 function saveProducts(p) { localStorage.setItem(STORE_KEY, JSON.stringify(p)); }
@@ -2242,6 +2242,7 @@ function injectFooter(isRoot) {
           <ul class="footer-links">
             <li><a href="${b}pages/heritage.html">Our Story</a></li>
             <li><a href="${b}pages/contact.html">Contact Us</a></li>
+            <li><a href="${b}privacy-policy.html">Privacy Policy</a></li>
           </ul>
         </div>
         <div>
