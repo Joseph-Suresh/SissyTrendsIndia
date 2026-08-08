@@ -86,6 +86,33 @@ def read_body(handler):
     try:    return json.loads(handler.rfile.read(n).decode('utf-8'))
     except: return {}
 
+# ── Sync DB products back to CSV file ─────────────────────────────
+def sync_csv_from_db():
+    """Rewrite products_CSVBasic.csv from current DB contents.
+    Called automatically after every admin create/update/delete."""
+    try:
+        import csv
+        fields = ['id','productId','available','name','category','subcategory',
+                  'fabric','price','badge','occasion','img','img2','img3','img4',
+                  'desc','created_at','updated_at']
+        with get_db() as db:
+            rows = db.execute('SELECT * FROM products ORDER BY id').fetchall()
+        with open(CSV_PATH, 'w', newline='', encoding='utf-8-sig') as f:
+            w = csv.DictWriter(f, fieldnames=fields, delimiter=';', extrasaction='ignore')
+            w.writeheader()
+            for row in rows:
+                w.writerow(dict(row))
+        print(f'  CSV synced: {len(rows)} products written to {CSV_PATH}')
+    except Exception as e:
+        print(f'  Warning: CSV sync failed — {e}')
+
+# ── Periodic WAL checkpoint to prevent journal file bloat ──
+def checkpoint_db():
+    try:
+        with get_db() as db:
+            db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+    except: pass
+
 # ── Generate next product ID ──────────────────────────────────────
 def next_product_id(db, category):
     prefix = {'sarees':'SAR', 'jewellery':'JWL', 'decor':'DCR'}.get(category, 'PRD')
@@ -98,6 +125,9 @@ def next_product_id(db, category):
     return f"{prefix}-{n:03d}"
 
 # ── Request handler ───────────────────────────────────────────────
+# Request counter for periodic maintenance
+_req_count = 0
+
 class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
@@ -116,6 +146,10 @@ class Handler(BaseHTTPRequestHandler):
 
     # ── GET ───────────────────────────────────────────────────────
     def do_GET(self):
+        global _req_count
+        _req_count += 1
+        if _req_count % 100 == 0:
+            checkpoint_db()
         p = urlparse(self.path)
         path = p.path.rstrip('/') or '/'
 
@@ -799,6 +833,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 row = db.execute("SELECT * FROM products WHERE id=?", (cur.lastrowid,)).fetchone()
             send_json(self, row_to_dict(row), 201)
+            sync_csv_from_db()
 
         elif path == '/api/wishlist':
             sid = body.get('session_id', 'anonymous')
