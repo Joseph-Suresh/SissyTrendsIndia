@@ -10,12 +10,16 @@ CSV_PATH = os.path.join(BASE_DIR, 'products_CSVBasic.csv')
 # On Render (no persistent disk): store DB in app directory
 # Locally: store in data/ subfolder
 _is_local = os.path.exists(os.path.join(BASE_DIR, '.localdev'))
-_render_disk = os.environ.get('RENDER_DISK_PATH', '')
+_data_dir = (
+    os.environ.get('DATA_DIR') or
+    os.environ.get('RENDER_DISK_PATH') or
+    None
+)
 if _is_local:
     DB_PATH = os.path.join(BASE_DIR, 'data', 'sissytrends.db')
-elif _render_disk:
-    os.makedirs(_render_disk, exist_ok=True)
-    DB_PATH = os.path.join(_render_disk, 'sissytrends.db')
+elif _data_dir:
+    os.makedirs(_data_dir, exist_ok=True)
+    DB_PATH = os.path.join(_data_dir, 'sissytrends.db')
 else:
     DB_PATH = os.path.join(BASE_DIR, 'sissytrends.db')
 
@@ -40,6 +44,7 @@ def init_db():
         img3        TEXT,
         img4        TEXT,
         desc        TEXT    DEFAULT '',
+        stock       INTEGER DEFAULT NULL,
         created_at  TEXT    DEFAULT CURRENT_TIMESTAMP,
         updated_at  TEXT    DEFAULT CURRENT_TIMESTAMP
     );

@@ -29,16 +29,21 @@ if os.path.exists(_env_path):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # On Render (no persistent disk): store DB in app directory
 # Locally: store in data/ subfolder
-_is_local = os.path.exists(os.path.join(BASE_DIR, '.localdev'))
-# On Render: use persistent disk if mounted, else fall back to app dir (data lost on restart)
-_render_disk = os.environ.get('RENDER_DISK_PATH', '')
+_is_local    = os.path.exists(os.path.join(BASE_DIR, '.localdev'))
+# DB_PATH: checks generic DATA_DIR first (works on any provider),
+# then RENDER_DISK_PATH for backward compat, then falls back to app dir
+_data_dir = (
+    os.environ.get('DATA_DIR') or          # generic — set this on any provider
+    os.environ.get('RENDER_DISK_PATH') or  # Render persistent disk
+    None
+)
 if _is_local:
     DB_PATH = os.path.join(BASE_DIR, 'data', 'sissytrends.db')
-elif _render_disk:
-    os.makedirs(_render_disk, exist_ok=True)
-    DB_PATH = os.path.join(_render_disk, 'sissytrends.db')
+elif _data_dir:
+    os.makedirs(_data_dir, exist_ok=True)
+    DB_PATH = os.path.join(_data_dir, 'sissytrends.db')
 else:
-    DB_PATH = os.path.join(BASE_DIR, 'sissytrends.db')  # ephemeral — lost on restart
+    DB_PATH = os.path.join(BASE_DIR, 'sissytrends.db')  # ephemeral fallback
 PORT     = int(os.environ.get('PORT', 5000))  # Render sets PORT env var
 HOST     = '0.0.0.0'  # bind to all interfaces (required for Render/cloud hosting)
 
@@ -131,7 +136,13 @@ _req_count = 0
 class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
-        # Suppress static file logs; only show API calls
+        # Log API calls and large static file requests only
+        path = self.path.split('?')[0]
+        is_api = '/api/' in path
+        is_image = any(path.lower().endswith(x) for x in ('.jpg','.jpeg','.png','.webp'))
+        if is_api or is_image:
+            agent = self.headers.get('User-Agent','?')[:60]
+            print(f'[{self.log_date_time_string()}] {self.command} {path} | {agent}')
         msg = fmt % args if args else fmt
         if '/api/' in msg:
             print(f"  API  {msg}")
@@ -252,6 +263,54 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/csv; charset=utf-8')
             self.send_header('Content-Disposition', 'attachment; filename="products_CSVBasic.csv"')
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        elif path == '/api/export/backups':
+            # List available backup files
+            backup_dir = os.path.join(_data_dir or BASE_DIR, 'backups')
+            if os.path.exists(backup_dir):
+                files = sorted(os.listdir(backup_dir), reverse=True)
+            else:
+                files = []
+            send_json(self, {'backups': files, 'dir': backup_dir})
+
+        elif path.startswith('/api/export/backup/'):
+            # Download a specific backup file
+            fname = path.replace('/api/export/backup/', '')
+            backup_dir = os.path.join(_data_dir or BASE_DIR, 'backups')
+            fpath = os.path.join(backup_dir, fname)
+            if os.path.exists(fpath) and fname.endswith('.csv'):
+                with open(fpath, 'rb') as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/csv')
+                self.send_header('Content-Disposition', f'attachment; filename="{fname}"')
+                self.send_header('Content-Length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                send_json(self, {'error': 'Not found'}, 404)
+            return
+
+        elif path in ('/api/export/orders', '/api/export/inquiries'):
+            import csv, io
+            table = 'orders' if 'orders' in path else 'inquiries'
+            fname = f'{table}_export.csv'
+            with get_db() as db:
+                rows = db.execute(f'SELECT * FROM {table} ORDER BY id DESC').fetchall()
+            out = io.StringIO()
+            if rows:
+                w = csv.writer(out)
+                w.writerow([d[0] for d in db.execute(f'SELECT * FROM {table} LIMIT 1').description])
+                w.writerows([list(r) for r in rows])
+            data = out.getvalue().encode('utf-8-sig')
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/csv; charset=utf-8')
+            self.send_header('Content-Disposition', f'attachment; filename="{fname}"')
             self.send_header('Content-Length', str(len(data)))
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
@@ -502,7 +561,7 @@ class Handler(BaseHTTPRequestHandler):
                             UPDATE products SET
                               available=?, name=?, category=?, subcategory=?, fabric=?,
                               price=?, badge=?, occasion=?, img=?, img2=?, img3=?, img4=?,
-                              desc=?, updated_at=CURRENT_TIMESTAMP
+                              desc=?, stock=?, updated_at=CURRENT_TIMESTAMP
                             WHERE productId=?""",
                             (
                                 1 if str(row.get('available','1')).strip() in ('1','true','True') else 0,
@@ -518,6 +577,7 @@ class Handler(BaseHTTPRequestHandler):
                                 row.get('img3','').strip() or None,
                                 row.get('img4','').strip() or None,
                                 row.get('desc','').strip() or None,
+                                int(row.get('stock')) if row.get('stock','').strip().isdigit() else None,
                                 pid
                             )
                         )
@@ -526,8 +586,8 @@ class Handler(BaseHTTPRequestHandler):
                         db.execute("""
                             INSERT INTO products
                               (productId,available,name,category,subcategory,fabric,
-                               price,badge,occasion,img,img2,img3,img4,desc)
-                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                               price,badge,occasion,img,img2,img3,img4,desc,stock)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                             (
                                 pid,
                                 1 if str(row.get('available','1')).strip() in ('1','true','True') else 0,
@@ -543,6 +603,7 @@ class Handler(BaseHTTPRequestHandler):
                                 row.get('img3','').strip() or None,
                                 row.get('img4','').strip() or None,
                                 row.get('desc','').strip() or None,
+                                int(row.get('stock')) if row.get('stock','').strip().isdigit() else None,
                             )
                         )
                         inserted += 1
@@ -765,6 +826,20 @@ class Handler(BaseHTTPRequestHandler):
                          body.get('amount', 0), body.get('product_id', 0), body.get('product_name', ''),
                          body.get('customer_name', ''), body.get('customer_email', ''), body.get('customer_phone', ''))
                     )
+                    # ── Deduct stock for each product in the order ──
+                    # product_ids is a comma-separated list for cart orders, or single id for Buy Now
+                    raw_ids = str(body.get('product_id', ''))
+                    pid_list = [p.strip() for p in raw_ids.split(',') if p.strip().isdigit()]
+                    for pid in pid_list:
+                        # Only deduct if stock is tracked (not NULL)
+                        db.execute("""
+                            UPDATE products
+                            SET stock = MAX(0, stock - 1),
+                                available = CASE WHEN stock - 1 <= 0 THEN 0 ELSE available END
+                            WHERE id = ? AND stock IS NOT NULL AND stock > 0
+                        """, (int(pid),))
+                    if pid_list:
+                        sync_csv_from_db()
                 send_json(self, {'ok': True, 'payment_id': payment_id})
                 # WhatsApp notification via wa.me link (logged server-side)
                 wa_num = os.environ.get('WHATSAPP_BUSINESS_NUMBER', '')
@@ -978,7 +1053,7 @@ class Handler(BaseHTTPRequestHandler):
                     UPDATE products SET
                       available=?,name=?,category=?,subcategory=?,fabric=?,
                       price=?,badge=?,occasion=?,img=?,img2=?,img3=?,img4=?,
-                      desc=?,updated_at=CURRENT_TIMESTAMP
+                      desc=?,stock=?,updated_at=CURRENT_TIMESTAMP
                     WHERE id=?""",
                     (1 if body.get('available', bool(e['available'])) else 0,
                      body.get('name',        e['name']),
@@ -993,6 +1068,7 @@ class Handler(BaseHTTPRequestHandler):
                      body.get('img3') or None,
                      body.get('img4') or None,
                      body.get('desc',        e['desc']),
+                     body.get('stock', e['stock']) if 'stock' in body else e['stock'],
                      pid)
                 )
                 row = db.execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone()
@@ -1050,6 +1126,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type',   mime)
         self.send_header('Content-Length', str(len(data)))
+        # Cache images and static assets for 7 days — saves bandwidth
+        if ext in ('.jpg','.jpeg','.png','.webp','.svg','.ico','.woff','.woff2'):
+            self.send_header('Cache-Control', 'public, max-age=604800, immutable')
+        elif ext in ('.css','.js'):
+            self.send_header('Cache-Control', 'public, max-age=86400')
+        else:
+            self.send_header('Cache-Control', 'no-cache')
         self.end_headers()
         self.wfile.write(data)
 
@@ -1074,6 +1157,11 @@ if __name__ == '__main__':
             _db.execute("ALTER TABLE orders ADD COLUMN customer_email TEXT DEFAULT ''")
             _db.execute("ALTER TABLE orders ADD COLUMN customer_phone TEXT DEFAULT ''")
             print("  Migrated: added customer columns to orders table")
+        # Migrate products table — add stock column if missing
+        _pcols = [r[1] for r in _db.execute("PRAGMA table_info(products)").fetchall()]
+        if _pcols and 'stock' not in _pcols:
+            _db.execute("ALTER TABLE products ADD COLUMN stock INTEGER DEFAULT NULL")
+            print("  Migrated: added stock column to products table")
         _db.execute("""
             CREATE TABLE IF NOT EXISTS wishlist_sessions (
                 session_id  TEXT PRIMARY KEY,
@@ -1134,6 +1222,41 @@ if __name__ == '__main__':
   Press Ctrl+C to stop.
 """)
     try:
+        # Start daily backup scheduler in background thread
+        import threading, time as _time
+        def daily_backup():
+            while True:
+                try:
+                    import csv as _csv, datetime as _dt
+                    now   = _dt.datetime.now()
+                    stamp = now.strftime('%Y-%m-%d')
+                    # Save to /data/backups/ if persistent disk available, else skip
+                    backup_dir = os.path.join(_data_dir or BASE_DIR, 'backups')
+                    os.makedirs(backup_dir, exist_ok=True)
+                    with get_db() as db:
+                        for table in ('products','orders','inquiries'):
+                            rows = db.execute(f'SELECT * FROM {table}').fetchall()
+                            if not rows: continue
+                            fpath = os.path.join(backup_dir, f'{table}_{stamp}.csv')
+                            with open(fpath,'w',newline='',encoding='utf-8-sig') as f:
+                                w = _csv.writer(f)
+                                w.writerow([d[0] for d in rows[0].keys() if True] if hasattr(rows[0],'keys') else range(len(rows[0])))
+                                w.writerows([list(r) for r in rows])
+                    # Keep only last 7 daily backups per table
+                    for table in ('products','orders','inquiries'):
+                        files = sorted([f for f in os.listdir(backup_dir) if f.startswith(table+'_')])
+                        for old in files[:-7]:
+                            os.remove(os.path.join(backup_dir, old))
+                    print(f'  Daily backup done: {stamp}')
+                except Exception as e:
+                    print(f'  Backup error: {e}')
+                # Sleep until next midnight
+                now   = _dt.datetime.now()
+                nxt   = (now + _dt.timedelta(days=1)).replace(hour=0,minute=0,second=0,microsecond=0)
+                _time.sleep((nxt - now).total_seconds())
+        t = threading.Thread(target=daily_backup, daemon=True)
+        t.start()
+        print('  Daily backup scheduler started.')
         HTTPServer((HOST, PORT), Handler).serve_forever()
     except KeyboardInterrupt:
         print("\n  Server stopped.")
