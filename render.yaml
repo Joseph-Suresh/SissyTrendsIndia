@@ -2,7 +2,7 @@ services:
   - type: web
     name: sissytrendsindia
     runtime: python
-    buildCommand: python init_db.py
+    buildCommand: pip install -r requirements.txt
     startCommand: python api.py
     envVars:
       - key: ADMIN_USERNAME
