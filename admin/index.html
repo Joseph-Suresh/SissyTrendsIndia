@@ -155,10 +155,6 @@
       </div>
       <div style="display:flex;align-items:center;gap:16px">
         <a href="../index.html" style="font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:rgba(201,162,78,.6);text-decoration:none">View Site</a>
-        <button onclick="exportAllData()" title="Download all products, orders & inquiries as CSV files"
-          style="font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;text-transform:uppercase;padding:8px 16px;border:1px solid rgba(39,174,96,.35);color:rgba(39,174,96,.7);background:none;cursor:pointer">
-          &#11015; Export Data
-        </button>
         <button onclick="doLogout()" style="font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.2em;text-transform:uppercase;padding:8px 16px;border:1px solid rgba(201,162,78,.25);color:rgba(201,162,78,.6);background:none;cursor:pointer;transition:all .2s"
                 onmouseover="this.style.borderColor='#c9a24e';this.style.color='#c9a24e'"
                 onmouseout="this.style.borderColor='rgba(201,162,78,.25)';this.style.color='rgba(201,162,78,.6)'">Logout</button>
@@ -346,14 +342,6 @@
         </label>
         <span class="toggle-status" id="availabilityLabel" style="color:#2ea043">Available</span>
       </div>
-      <!-- Stock count -->
-      <div style="margin-top:12px;margin-bottom:4px">
-        <label style="display:block;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:rgba(250,245,236,.5);margin-bottom:6px">Stock Count <span style="color:rgba(250,245,236,.3);font-size:9px">(leave blank = not tracked)</span></label>
-        <input id="fStock" type="number" min="0" placeholder="e.g. 5"
-          style="width:140px;padding:10px 12px;background:rgba(250,245,236,.07);border:1px solid rgba(201,162,78,.3);color:#faf5ec;font-family:'Jost',sans-serif;font-size:14px;outline:none"
-          oninput="updateStockLabel(this.value)"/>
-        <span id="stockLabel" style="margin-left:10px;font-size:11px;color:rgba(250,245,236,.4)"></span>
-      </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px">
         <button onclick="saveProduct()" style="flex:1;text-align:center;padding:14px;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;border:none;cursor:pointer;transition:background .3s"
                 onmouseover="this.style.background='#a07830';this.style.color='#faf5ec'"
@@ -430,22 +418,6 @@ async function doLogin() {
 }
 
 function doLogout() { sessionStorage.removeItem('st_admin'); location.reload(); }
-
-async function exportAllData() {
-  const base = (location.hostname==='localhost'||location.hostname==='127.0.0.1') ? 'http://localhost:5000' : '';
-  // Download products CSV
-  const a1 = document.createElement('a');
-  a1.href = base + '/api/export/csv'; a1.download = 'products.csv'; a1.click();
-  await new Promise(r => setTimeout(r, 800));
-  // Download orders CSV
-  const a2 = document.createElement('a');
-  a2.href = base + '/api/export/orders'; a2.download = 'orders.csv'; a2.click();
-  await new Promise(r => setTimeout(r, 800));
-  // Download inquiries CSV
-  const a3 = document.createElement('a');
-  a3.href = base + '/api/export/inquiries'; a3.download = 'inquiries.csv'; a3.click();
-  showAdminToast('\u2714 Exported: products, orders & inquiries');
-}
 
 // Auto-restore session
 if (sessionStorage.getItem('st_admin') === '1') {
@@ -639,15 +611,13 @@ async function saveProduct() {
   const desc        = document.getElementById('fDesc').value.trim();
   const occasion    = document.getElementById('fOccasion').value;
   const available   = document.getElementById('fAvailable') ? document.getElementById('fAvailable').checked : true;
-  const stockVal    = document.getElementById('fStock')?.value;
-  const stock       = stockVal !== '' && stockVal !== undefined ? parseInt(stockVal) : null;
   const editId      = document.getElementById('editId').value;
 
   if (!name || !category || !subcategory || !price || !badge || !img) {
     showAdminToast('Please fill all required fields ✦', true); return;
   }
 
-  const payload = { name, category, subcategory, fabric, price, badge, img, img2, img3, img4, desc, occasion, available, stock };
+  const payload = { name, category, subcategory, fabric, price, badge, img, img2, img3, img4, desc, occasion, available };
 
   try {
     let resp;
@@ -698,8 +668,6 @@ function editProduct(id) {
   document.getElementById('fOccasion').value    = p.occasion || '';
   const avEl = document.getElementById('fAvailable');
   if (avEl) { avEl.checked = p.available !== false; updateAvailabilityLabel(); }
-  const stEl = document.getElementById('fStock');
-  if (stEl) { stEl.value = p.stock !== null && p.stock !== undefined ? p.stock : ''; updateStockLabel(stEl.value); }
   const pidEl = document.getElementById('fProductId');
   if (pidEl) pidEl.textContent = p.productId || 'Will be generated on save';
   document.getElementById('formHeading').textContent = 'Edit Product';
@@ -736,8 +704,6 @@ function resetForm() {
   if (pidEl) pidEl.textContent = 'Will be generated on save';
   const avEl = document.getElementById('fAvailable');
   if (avEl) { avEl.checked = true; updateAvailabilityLabel(); }
-  const stEl = document.getElementById('fStock');
-  if (stEl) { stEl.value = ''; updateStockLabel(''); }
   document.getElementById('formHeading').textContent = 'Add New Product';
   document.getElementById('saveBtn').textContent     = 'Add Product';
   document.getElementById('cancelBtn').style.display = 'none';
@@ -1033,21 +999,6 @@ function updateAvailabilityLabel() {
   label.style.color = avEl.checked ? '#2ea043' : 'rgba(220,80,80,.8)';
 }
 
-function updateStockLabel(val) {
-  const label = document.getElementById('stockLabel');
-  if (!label) return;
-  const n = parseInt(val);
-  if (val === '' || val === null || isNaN(n)) {
-    label.textContent = 'Not tracked'; label.style.color = 'rgba(250,245,236,.3)';
-  } else if (n === 0) {
-    label.textContent = 'Sold Out — will auto-hide'; label.style.color = 'rgba(220,80,80,.8)';
-  } else if (n <= 5) {
-    label.textContent = '⚠ Low stock'; label.style.color = '#f0a500';
-  } else {
-    label.textContent = '✔ In stock'; label.style.color = '#2ea043';
-  }
-}
-
 function exportCSV() {
   const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://localhost:5000' : '';
@@ -1079,11 +1030,12 @@ function filterProductsBySearch(query) {
         <td style="color:rgba(250,245,236,.5)">${p.badge}</td>
         <td style="color:#c9a24e;font-weight:600">₹${p.price.toLocaleString()}</td>
         <td style="color:${p.available===false?'rgba(220,80,80,.8)':'rgba(46,160,67,.9)'};font-size:11px">${p.available===false?'Out of Stock':'Available'}</td>
-        <td style="font-size:12px;font-weight:600;color:${
-          p.stock===null||p.stock===undefined ? 'rgba(250,245,236,.3)' :
-          p.stock===0 ? 'rgba(220,80,80,.9)' :
-          p.stock<=5 ? '#f0a500' : 'rgba(46,160,67,.9)'
-        }">${p.stock===null||p.stock===undefined?'—':p.stock===0?'Sold Out':p.stock+'&nbsp;left'}</td>
+        <td style="font-size:12px;font-weight:600;text-align:center;color:${
+          p.stock===null||p.stock===undefined?'rgba(250,245,236,.25)':
+          p.stock===0?'rgba(220,80,80,.9)':
+          p.stock<=5?'#f0a500':'rgba(46,160,67,.9)'
+        }">${p.stock===null||p.stock===undefined?'\u2014':p.stock===0?'Sold Out':p.stock+' left'}</td>
+        <td style="font-size:13px;text-align:center;font-weight:600;color:${(p.notify_count||0)>0?'#c9a24e':'rgba(250,245,236,.25)'}" title="${p.notify_count||0} customer(s) interested">${p.notify_count||0}</td>
         <td>
           <button class="btn-edit"   onclick="editProduct(${p.id})">Edit</button>
           <button class="btn-delete" onclick="deleteProduct(${p.id})">Delete</button>

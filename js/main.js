@@ -572,6 +572,37 @@ function openModal(productOrId) {
     heartBtn.style.color       = inWL ? '#c0392b' : '';
   }
 
+  // Update Buy Now / Add to Cart based on stock & availability
+  const isSoldOut2 = product.available === false;  // toggle OFF = SOLD OUT
+  const isUnavail  = product.available !== false && product.stock !== null && product.stock !== undefined && product.stock === 0; // stock=0 but available ON = OUT OF STOCK
+  const cartBtn    = document.getElementById('modalCartBtn');
+  const buyBtn2    = document.getElementById('modalBuyBtn');
+  const notifyBtn  = document.getElementById('modalNotifyBtn');
+  if (cartBtn && buyBtn2 && notifyBtn) {
+    // Reset first
+    cartBtn.removeAttribute('disabled'); buyBtn2.removeAttribute('disabled');
+    cartBtn.style.opacity = '1'; buyBtn2.style.opacity = '1';
+    cartBtn.style.cursor = 'pointer'; buyBtn2.style.cursor = 'pointer';
+    cartBtn.style.display = 'flex'; buyBtn2.style.display = 'flex';
+    notifyBtn.style.display = 'none';
+    if (isSoldOut2) {
+      // available=OFF → SOLD OUT → hide buttons, show WhatsApp notify
+      cartBtn.style.display = 'none'; buyBtn2.style.display = 'none';
+      notifyBtn.style.display = 'flex';
+      var waText = encodeURIComponent('Hi SissyTrends! I am interested in ' + product.name + ' (ID: ' + (product.productId||'-') + '). Please notify me when it is back in stock.');
+      notifyBtn.href = 'https://wa.me/919344182144?text=' + waText;
+      notifyBtn.onclick = function(){
+        var b=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?'http://localhost:5000':'';
+        fetch(b+'/api/products/'+product.id+'/notify',{method:'POST'}).catch(function(){});
+      };
+    } else if (isUnavail) {
+      // stock=0 but available=ON → OUT OF STOCK → disable buttons
+      cartBtn.setAttribute('disabled','disabled'); buyBtn2.setAttribute('disabled','disabled');
+      cartBtn.style.opacity = '0.4'; buyBtn2.style.opacity = '0.4';
+      cartBtn.style.cursor = 'not-allowed'; buyBtn2.style.cursor = 'not-allowed';
+    }
+  }
+
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
 }
@@ -2021,8 +2052,8 @@ function getDefaultProducts() {
 /* ── Render product card ── */
 function renderProductCard(product, delay = 0) {
   const inWL     = isInWishlist(product.id);
-  const isSoldOut = product.stock !== null && product.stock !== undefined && product.stock === 0;
-  const isOut     = product.available === false && !isSoldOut;  // manually marked out of stock
+  const isSoldOut  = product.available === false;  // toggle OFF = SOLD OUT (highest priority)
+  const isOut      = product.available !== false && product.stock !== null && product.stock !== undefined && product.stock === 0; // stock=0 but available=true = OUT OF STOCK
   const lowStock  = product.stock !== null && product.stock !== undefined && product.stock > 0 && product.stock <= 5;
   const waNotifyText = encodeURIComponent(`Hi SissyTrends! I'm interested in ${product.name} (ID: ${product.productId||'—'}). Please notify me when it's back in stock.`);
 
@@ -2030,14 +2061,17 @@ function renderProductCard(product, delay = 0) {
     <div class="product-card reveal" style="transition-delay:${delay}s;position:relative${isOut?';opacity:0.85':''}"
          onclick="openModal(${product.id})">
       <div class="img-wrap" style="position:relative">
-        <img src="${product.img}" alt="${product.name}" loading="lazy"
+        <img src="${(product.img||''). replace(/^\.\.\//, '')}" alt="${product.name}" loading="lazy"
              onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#EAD9C4,#E8C5C0)';this.parentElement.style.minHeight='260px'"/>
-        ${isOut ? `
+        ${isSoldOut ? `
           <div style="position:absolute;inset:0;background:rgba(0,0,0,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2;gap:8px">
             <div style="background:#7a1f2e;color:#faf5ec;font-family:'Cinzel',serif;font-size:11px;letter-spacing:.25em;padding:8px 18px;transform:rotate(-15deg)">SOLD OUT</div>
             <div style="font-family:'Jost',sans-serif;font-size:10px;color:rgba(250,245,236,.7);letter-spacing:.1em;margin-top:6px">Coming back soon</div>
+          </div>` : isOut ? `
+          <div style="position:absolute;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:2">
+            <div style="background:#3a3a3a;color:#faf5ec;font-family:'Cinzel',serif;font-size:11px;letter-spacing:.25em;padding:8px 18px;transform:rotate(-15deg)">OUT OF STOCK</div>
           </div>` : ''}
-        ${false ? `<div style="position:absolute;bottom:8px;left:8px;background:#f0a500;color:#1a0a06;font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.1em;padding:3px 8px;font-weight:600">Only ${product.stock} left!</div>` : ''}
+        ${lowStock ? `<div style="position:absolute;bottom:8px;left:8px;background:#f0a500;color:#1a0a06;font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.1em;padding:3px 8px;font-weight:600">Only ${product.stock} left!</div>` : ''}
         <button data-wishlist-id="${product.id}"
                 onclick="event.stopPropagation();addToWishlist(_productCache[${product.id}])"
                 style="position:absolute;top:10px;right:10px;background:rgba(26,10,6,.7);border:1px solid rgba(201,162,78,.3);color:${inWL?'#c0392b':'rgba(250,245,236,.7)'};width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;z-index:3">
@@ -2053,7 +2087,7 @@ function renderProductCard(product, delay = 0) {
         <div class="card-actions">
           ${isOut ? `
           <a href="https://wa.me/919344182144?text=${waNotifyText}" target="_blank"
-            onclick="event.stopPropagation()"
+            onclick="event.stopPropagation();(function(){var b=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?'http://localhost:5000':'';fetch(b+'/api/products/'+product.id+'/notify',{method:'POST'}).catch(function(){});})();"
             style="width:100%;padding:11px;background:#25d366;border:none;color:#fff;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none">
             <svg width="14" height="14" fill="white" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.528 5.84L.057 23.5l5.797-1.499A11.938 11.938 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.854 0-3.6-.497-5.11-1.367l-.366-.218-3.44.889.921-3.32-.239-.384A9.955 9.955 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
             Notify Me on WhatsApp
@@ -2158,9 +2192,13 @@ function injectNav(activePage, isRoot) {
         <div style="display:flex;flex-direction:column;gap:10px">
           <button id="modalWishlistBtn" class="btn-primary" style="width:100%;justify-content:center" onclick="modalWishlistToggle()"><span>♡ Add to Wishlist</span></button>
           <div style="display:flex;gap:8px">
-            <button style="flex:1;padding:12px;border:none;cursor:pointer;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="addToCart(_modalProduct)">+ Add to Cart</button>
-            <button style="flex:1;padding:12px;border:none;cursor:pointer;background:#7a1f2e;color:#faf5ec;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="buyNow()">Buy Now</button>
+            <button id="modalCartBtn" style="flex:1;padding:12px;border:none;cursor:pointer;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="addToCart(_modalProduct)">+ Add to Cart</button>
+            <button id="modalBuyBtn" style="flex:1;padding:12px;border:none;cursor:pointer;background:#7a1f2e;color:#faf5ec;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="buyNow()">Buy Now</button>
           </div>
+          <a id="modalNotifyBtn" href="#" target="_blank" style="display:none;width:100%;padding:12px;background:#25d366;border:none;color:#fff;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;align-items:center;justify-content:center;gap:8px;text-decoration:none">
+            <svg width="14" height="14" fill="white" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.528 5.84L.057 23.5l5.797-1.499A11.938 11.938 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.854 0-3.6-.497-5.11-1.367l-.366-.218-3.44.889.921-3.32-.239-.384A9.955 9.955 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+            Notify Me When Back in Stock
+          </a>
           <button class="btn-wa" style="width:100%;justify-content:center;padding:12px;border:none;cursor:pointer;background:#25d366;color:#fff;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;display:flex;align-items:center;gap:8px" onclick="enquireOnWhatsApp()">
             <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.528 5.84L.057 23.5l5.797-1.499A11.938 11.938 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.854 0-3.6-.497-5.11-1.367l-.366-.218-3.44.889.921-3.32-.239-.384A9.955 9.955 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
             Enquire on WhatsApp

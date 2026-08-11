@@ -561,7 +561,7 @@ class Handler(BaseHTTPRequestHandler):
                             UPDATE products SET
                               available=?, name=?, category=?, subcategory=?, fabric=?,
                               price=?, badge=?, occasion=?, img=?, img2=?, img3=?, img4=?,
-                              desc=?, stock=?, updated_at=CURRENT_TIMESTAMP
+                              desc=?, updated_at=CURRENT_TIMESTAMP
                             WHERE productId=?""",
                             (
                                 1 if str(row.get('available','1')).strip() in ('1','true','True') else 0,
@@ -577,7 +577,6 @@ class Handler(BaseHTTPRequestHandler):
                                 row.get('img3','').strip() or None,
                                 row.get('img4','').strip() or None,
                                 row.get('desc','').strip() or None,
-                                int(row.get('stock')) if row.get('stock','').strip().isdigit() else None,
                                 pid
                             )
                         )
@@ -586,8 +585,8 @@ class Handler(BaseHTTPRequestHandler):
                         db.execute("""
                             INSERT INTO products
                               (productId,available,name,category,subcategory,fabric,
-                               price,badge,occasion,img,img2,img3,img4,desc,stock)
-                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                               price,badge,occasion,img,img2,img3,img4,desc)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                             (
                                 pid,
                                 1 if str(row.get('available','1')).strip() in ('1','true','True') else 0,
@@ -603,7 +602,6 @@ class Handler(BaseHTTPRequestHandler):
                                 row.get('img3','').strip() or None,
                                 row.get('img4','').strip() or None,
                                 row.get('desc','').strip() or None,
-                                int(row.get('stock')) if row.get('stock','').strip().isdigit() else None,
                             )
                         )
                         inserted += 1
@@ -826,20 +824,14 @@ class Handler(BaseHTTPRequestHandler):
                          body.get('amount', 0), body.get('product_id', 0), body.get('product_name', ''),
                          body.get('customer_name', ''), body.get('customer_email', ''), body.get('customer_phone', ''))
                     )
-                    # ── Deduct stock for each product in the order ──
-                    # product_ids is a comma-separated list for cart orders, or single id for Buy Now
+                    # Deduct stock for each product paid (stock=0 = OUT OF STOCK, available stays independent)
                     raw_ids = str(body.get('product_id', ''))
-                    pid_list = [p.strip() for p in raw_ids.split(',') if p.strip().isdigit()]
-                    for pid in pid_list:
-                        # Only deduct if stock is tracked (not NULL)
+                    for pid_s in [p.strip() for p in raw_ids.split(',') if p.strip().isdigit()]:
                         db.execute("""
-                            UPDATE products
-                            SET stock = MAX(0, stock - 1),
-                                available = CASE WHEN stock - 1 <= 0 THEN 0 ELSE available END
+                            UPDATE products SET stock = MAX(0, stock - 1)
                             WHERE id = ? AND stock IS NOT NULL AND stock > 0
-                        """, (int(pid),))
-                    if pid_list:
-                        sync_csv_from_db()
+                        """, (int(pid_s),))
+                    sync_csv_from_db()
                 send_json(self, {'ok': True, 'payment_id': payment_id})
                 # WhatsApp notification via wa.me link (logged server-side)
                 wa_num = os.environ.get('WHATSAPP_BUSINESS_NUMBER', '')
@@ -998,6 +990,14 @@ class Handler(BaseHTTPRequestHandler):
                 db.execute("UPDATE coupon_config SET used = used + 1 WHERE id=1 AND used < \"limit\"")
             send_json(self, {'ok': True})
 
+        elif re.match(r'^/api/products/\d+/notify$', path):
+            # Increment notify_count when customer clicks WhatsApp notify button
+            pid = int(path.split('/')[-2])
+            with get_db() as db:
+                db.execute('UPDATE products SET notify_count = COALESCE(notify_count,0) + 1 WHERE id=?', (pid,))
+                row = db.execute('SELECT notify_count FROM products WHERE id=?', (pid,)).fetchone()
+            send_json(self, {'ok': True, 'notify_count': row[0] if row else 1})
+
         elif path == '/api/coupon/admin':
             # Admin: update coupon settings
             with get_db() as db:
@@ -1049,13 +1049,16 @@ class Handler(BaseHTTPRequestHandler):
             with get_db() as db:
                 e = db.execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone()
                 if not e: send_json(self, {'error':'Not found'}, 404); return
+                stock_val = body.get('stock', e['stock']) if 'stock' in body else e['stock']
+                # available toggle controls SOLD OUT independently from stock
+                avail_val = body.get('available', bool(e['available']))
                 db.execute("""
                     UPDATE products SET
                       available=?,name=?,category=?,subcategory=?,fabric=?,
                       price=?,badge=?,occasion=?,img=?,img2=?,img3=?,img4=?,
                       desc=?,stock=?,updated_at=CURRENT_TIMESTAMP
                     WHERE id=?""",
-                    (1 if body.get('available', bool(e['available'])) else 0,
+                    (1 if avail_val else 0,
                      body.get('name',        e['name']),
                      body.get('category',    e['category']),
                      body.get('subcategory', e['subcategory']),
@@ -1068,7 +1071,7 @@ class Handler(BaseHTTPRequestHandler):
                      body.get('img3') or None,
                      body.get('img4') or None,
                      body.get('desc',        e['desc']),
-                     body.get('stock', e['stock']) if 'stock' in body else e['stock'],
+                     stock_val,
                      pid)
                 )
                 row = db.execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone()
@@ -1157,11 +1160,14 @@ if __name__ == '__main__':
             _db.execute("ALTER TABLE orders ADD COLUMN customer_email TEXT DEFAULT ''")
             _db.execute("ALTER TABLE orders ADD COLUMN customer_phone TEXT DEFAULT ''")
             print("  Migrated: added customer columns to orders table")
-        # Migrate products table — add stock column if missing
-        _pcols = [r[1] for r in _db.execute("PRAGMA table_info(products)").fetchall()]
-        if _pcols and 'stock' not in _pcols:
-            _db.execute("ALTER TABLE products ADD COLUMN stock INTEGER DEFAULT NULL")
-            print("  Migrated: added stock column to products table")
+        # Add notify_count and stock columns if missing
+        _pcols = [r[1] for r in _db.execute('PRAGMA table_info(products)').fetchall()]
+        if 'stock' not in _pcols:
+            _db.execute('ALTER TABLE products ADD COLUMN stock INTEGER DEFAULT NULL')
+            print('  Migrated: added stock column')
+        if 'notify_count' not in _pcols:
+            _db.execute('ALTER TABLE products ADD COLUMN notify_count INTEGER DEFAULT 0')
+            print('  Migrated: added notify_count column')
         _db.execute("""
             CREATE TABLE IF NOT EXISTS wishlist_sessions (
                 session_id  TEXT PRIMARY KEY,
