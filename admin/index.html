@@ -238,9 +238,10 @@
             </th>
             <th>Badge</th>
             <th>Price</th>
-            <th style="white-space:nowrap;cursor:pointer" onclick="sortByDate()" title="Sort by added date">
-              Added Date <span id="dateSortIcon" style="color:#c9a24e;font-size:10px">&#8645;</span>
-            </th>
+            <th>Available</th>
+            <th style="white-space:nowrap">Stock</th>
+            <th style="white-space:nowrap" title="Notify Me clicks">&#128276; Interest</th>
+            <th style="white-space:nowrap;cursor:pointer" onclick="sortByDate()" title="Sort by added date">Added Date <span id="dateSortIcon" style="color:#c9a24e;font-size:10px">&#8645;</span></th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -341,6 +342,15 @@
           <span class="toggle-slider"></span>
         </label>
         <span class="toggle-status" id="availabilityLabel" style="color:#2ea043">Available</span>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:rgba(250,245,236,.5);margin-bottom:6px">Stock Count <span style="font-size:9px;color:rgba(250,245,236,.3)">(leave blank = not tracked)</span></label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <input id="fStock" type="number" min="0" placeholder="e.g. 5"
+            style="width:140px;padding:10px 12px;background:rgba(250,245,236,.07);border:1px solid rgba(201,162,78,.3);color:#faf5ec;font-family:'Jost',sans-serif;font-size:14px;outline:none"
+            oninput="updateStockLabel(this.value)"/>
+          <span id="stockLabel" style="font-size:11px;color:rgba(250,245,236,.35)">Not tracked</span>
+        </div>
       </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px">
         <button onclick="saveProduct()" style="flex:1;text-align:center;padding:14px;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;border:none;cursor:pointer;transition:background .3s"
@@ -576,9 +586,18 @@ function renderProductsTable(filter, products_override) {
   let products = products_override !== undefined ? products_override : getProducts();
   if (!products_override && filter !== 'all') products = products.filter(p => p.category === filter);
   document.getElementById('productsTableBody').innerHTML = products.length === 0
-    ? `<tr><td colspan="9" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No products found.</td></tr>`
+    ? `<tr><td colspan="12" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No products found.</td></tr>`
     : products.map(p => {
         const dateStr = p.created_at ? p.created_at.substring(0,10) : '—';
+        const sb = p.available===false
+          ? '<span style="background:rgba(160,30,30,.3);color:rgba(255,130,130,.95);font-size:10px;font-weight:700;padding:3px 7px;border-radius:3px">SOLD OUT</span>'
+          : (p.stock===null||p.stock===undefined)
+            ? '<span style="color:rgba(250,245,236,.2)">&mdash;</span>'
+            : p.stock===0
+              ? '<span style="background:rgba(160,90,0,.3);color:rgba(255,175,60,.95);font-size:10px;font-weight:700;padding:3px 7px;border-radius:3px">OUT OF STOCK</span>'
+              : p.stock<=5
+                ? '<span style="background:rgba(150,140,0,.25);color:rgba(230,215,60,.95);font-size:10px;font-weight:700;padding:3px 7px;border-radius:3px">'+p.stock+' left</span>'
+                : '<span style="background:rgba(25,120,50,.25);color:rgba(80,200,110,.95);font-size:10px;font-weight:700;padding:3px 7px;border-radius:3px">'+p.stock+' left</span>';
         return `<tr>
         <td><img src="${resolveImg(p.img)}" alt="${p.name}" onerror="this.parentElement.style.background='linear-gradient(135deg,#2D2520,#8B7355)';this.style.display='none'"/></td>
         <td style="color:#c9a24e;font-size:11px;letter-spacing:.05em;font-weight:500">${p.productId||'—'}</td>
@@ -587,6 +606,9 @@ function renderProductsTable(filter, products_override) {
         <td style="color:rgba(201,162,78,.6);font-size:12px">${p.subcategory||'—'}</td>
         <td style="color:rgba(250,245,236,.5)">${p.badge||'—'}</td>
         <td style="color:#c9a24e;font-weight:600">&#8377;${p.price.toLocaleString()}</td>
+        <td style="color:${p.available===false?'rgba(220,80,80,.8)':'rgba(46,160,67,.9)'};font-size:11px">${p.available===false?'Unavailable':'Available'}</td>
+        <td style="text-align:center;padding:3px 4px">${sb}</td>
+        <td style="font-size:13px;text-align:center;font-weight:600;color:${(p.notify_count||0)>0?'#c9a24e':'rgba(250,245,236,.25)'}" title="${p.notify_count||0} interested">${p.notify_count||0}</td>
         <td style="color:rgba(250,245,236,.4);font-size:11px;white-space:nowrap">${dateStr}</td>
         <td>
           <button class="btn-edit"   onclick="editProduct(${p.id})">Edit</button>
@@ -617,7 +639,9 @@ async function saveProduct() {
     showAdminToast('Please fill all required fields ✦', true); return;
   }
 
-  const payload = { name, category, subcategory, fabric, price, badge, img, img2, img3, img4, desc, occasion, available };
+  const stockRaw = document.getElementById('fStock') ? document.getElementById('fStock').value : '';
+  const stock = stockRaw !== '' ? parseInt(stockRaw) : null;
+  const payload = { name, category, subcategory, fabric, price, badge, img, img2, img3, img4, desc, occasion, available, stock };
 
   try {
     let resp;

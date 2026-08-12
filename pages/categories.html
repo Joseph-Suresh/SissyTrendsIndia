@@ -187,7 +187,8 @@
       _allProducts = await r.json();
     } catch (e) {
       console.warn('API fetch failed, using defaults:', e);
-      _allProducts = typeof getDefaultProducts === 'function' ? getDefaultProducts() : [];
+      _allProducts = [];
+      console.error('API fetch failed:', e);
     }
     if (typeof saveProducts === 'function') saveProducts(_allProducts);
     _allProducts.forEach(p => { if (typeof _productCache !== 'undefined') _productCache[p.id] = p; });
