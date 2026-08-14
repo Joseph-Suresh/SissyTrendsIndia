@@ -818,12 +818,32 @@ class Handler(BaseHTTPRequestHandler):
                             amount INTEGER, product_id INTEGER,
                             product_name TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP
                         )""")
-                    db.execute(
-                        "INSERT OR IGNORE INTO orders (order_id,payment_id,signature,amount,product_id,product_name,customer_name,customer_email,customer_phone) VALUES (?,?,?,?,?,?,?,?,?)",
-                        (order_id, payment_id, signature,
-                         body.get('amount', 0), body.get('product_id', 0), body.get('product_name', ''),
-                         body.get('customer_name', ''), body.get('customer_email', ''), body.get('customer_phone', ''))
-                    )
+                    import uuid as _uuid2
+                    phone = body.get('customer_phone','')
+                    pending = db.execute(
+                        "SELECT id FROM orders WHERE customer_phone=? AND status IN ('pending','in-progress') ORDER BY id DESC LIMIT 1",
+                        (phone,)
+                    ).fetchone()
+                    if pending:
+                        db.execute(
+                            "UPDATE orders SET status='paid',razorpay_order_id=?,payment_id=?,signature=?,"
+                            "amount=?,product_id=?,product_name=?,customer_name=?,customer_email=?,"
+                            "customer_address=CASE WHEN customer_address='' THEN ? ELSE customer_address END "
+                            "WHERE id=?",
+                            (order_id, payment_id, signature,
+                             body.get('amount',0), body.get('product_id',0), body.get('product_name',''),
+                             body.get('customer_name',''), body.get('customer_email',''),
+                             body.get('customer_address',''), pending[0])
+                        )
+                    else:
+                        internal_id = 'ST-' + str(_uuid2.uuid4())[:8].upper()
+                        db.execute(
+                            "INSERT OR IGNORE INTO orders (order_id,razorpay_order_id,payment_id,signature,amount,product_id,product_name,customer_name,customer_email,customer_phone,customer_address,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,'paid')",
+                            (internal_id, order_id, payment_id, signature,
+                             body.get('amount',0), body.get('product_id',0), body.get('product_name',''),
+                             body.get('customer_name',''), body.get('customer_email',''), phone,
+                             body.get('customer_address',''))
+                        )
                     # Deduct stock for each product paid (stock=0 = OUT OF STOCK, available stays independent)
                     raw_ids = str(body.get('product_id', ''))
                     for pid_s in [p.strip() for p in raw_ids.split(',') if p.strip().isdigit()]:
@@ -1018,23 +1038,52 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == '/api/orders/attempt':
             with get_db() as db:
-                # Migrate if needed
                 cols = [r[1] for r in db.execute('PRAGMA table_info(orders)').fetchall()]
                 if 'status' not in cols:
                     db.execute("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'paid'")
                     db.execute("ALTER TABLE orders ADD COLUMN error_reason TEXT DEFAULT ''")
                     db.execute("ALTER TABLE orders ADD COLUMN error_desc   TEXT DEFAULT ''")
-                db.execute(
-                    "INSERT INTO orders (order_id,payment_id,amount,product_id,product_name,"
-                    "customer_name,customer_email,customer_phone,status,error_reason,error_desc) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                    (body.get('order_id',''), body.get('payment_id',''),
-                     body.get('amount',0), body.get('product_id',0),
-                     body.get('product_name',''), body.get('customer_name',''),
-                     body.get('customer_email',''), body.get('customer_phone',''),
-                     body.get('status','failed'), body.get('error_reason',''),
-                     body.get('error_desc',''))
-                )
+                if 'customer_address' not in cols:
+                    db.execute("ALTER TABLE orders ADD COLUMN customer_address TEXT DEFAULT ''")
+                if 'razorpay_order_id' not in cols:
+                    db.execute("ALTER TABLE orders ADD COLUMN razorpay_order_id TEXT DEFAULT ''")
+                import uuid as _uuid
+                razorpay_oid = body.get('order_id','')
+                status       = body.get('status','in-progress')
+                phone        = body.get('customer_phone','')
+                pending_row  = db.execute(
+                    "SELECT id FROM orders WHERE order_id=? OR (customer_phone=? AND status IN ('pending','in-progress')) ORDER BY id DESC LIMIT 1",
+                    (razorpay_oid, phone)
+                ).fetchone()
+                if pending_row and status in ('dismissed','failed','paid'):
+                    db.execute(
+                        "UPDATE orders SET status=?,"
+                        "razorpay_order_id=CASE WHEN ?!='' THEN ? ELSE razorpay_order_id END,"
+                        "error_reason=?,error_desc=?,payment_id=?,"
+                        "product_name=CASE WHEN product_name='' AND ?!='' THEN ? ELSE product_name END,"
+                        "amount=CASE WHEN amount=0 AND ?>0 THEN ? ELSE amount END "
+                        "WHERE id=?",
+                        (status,
+                         razorpay_oid, razorpay_oid,
+                         body.get('error_reason',''), body.get('error_desc',''),
+                         body.get('payment_id',''),
+                         body.get('product_name',''), body.get('product_name',''),
+                         body.get('amount',0), body.get('amount',0),
+                         pending_row[0])
+                    )
+                else:
+                    internal_id = 'ST-' + str(_uuid.uuid4())[:8].upper()
+                    db.execute(
+                        "INSERT INTO orders (order_id,razorpay_order_id,payment_id,amount,product_id,product_name,"
+                        "customer_name,customer_email,customer_phone,customer_address,status,error_reason,error_desc) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (internal_id, razorpay_oid,
+                         body.get('payment_id',''), body.get('amount',0), body.get('product_id',0),
+                         body.get('product_name',''), body.get('customer_name',''),
+                         body.get('customer_email',''), phone,
+                         body.get('customer_address',''),
+                         status, body.get('error_reason',''), body.get('error_desc',''))
+                    )
             send_json(self, {'ok': True}, 201)
             return
         else:
@@ -1160,6 +1209,12 @@ if __name__ == '__main__':
             _db.execute("ALTER TABLE orders ADD COLUMN customer_email TEXT DEFAULT ''")
             _db.execute("ALTER TABLE orders ADD COLUMN customer_phone TEXT DEFAULT ''")
             print("  Migrated: added customer columns to orders table")
+        if _ocols and 'customer_address' not in _ocols:
+            _db.execute("ALTER TABLE orders ADD COLUMN customer_address TEXT DEFAULT ''")
+            print("  Migrated: added customer_address to orders table")
+        if _ocols and 'razorpay_order_id' not in _ocols:
+            _db.execute("ALTER TABLE orders ADD COLUMN razorpay_order_id TEXT DEFAULT ''")
+            print("  Migrated: added razorpay_order_id to orders table")
         # Add notify_count and stock columns if missing
         _pcols = [r[1] for r in _db.execute('PRAGMA table_info(products)').fetchall()]
         if 'stock' not in _pcols:

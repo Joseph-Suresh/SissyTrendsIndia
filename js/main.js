@@ -266,8 +266,7 @@ function renderCartDrawer(){
   }
   el.innerHTML=items.map(function(i){
     return '<div style="display:flex;gap:14px;padding:14px 0;border-bottom:1px solid rgba(201,162,78,.12)">'
-      +'<img src="'+i.img+'" alt="'+i.name+'" style="width:72px;height:90px;object-fit:cover;flex-shrink:0" onerror="this.style.background=\'linear-gradient(135deg,#EAD9C4,#E8C5C0)\'"/>'
-      +'<div style="flex:1;min-width:0">'
+      +'<img src="'+i.img+'" alt="'+i.name+'" onclick="closeCartDrawer();openModal('+i.id+')" style="width:72px;height:90px;object-fit:cover;flex-shrink:0;cursor:pointer" title="Quick view" onerror="this.style.background=\'linear-gradient(135deg,#EAD9C4,#E8C5C0)\'"/>'      +'<div style="flex:1;min-width:0">'
       +'<div style="font-family:\'Cormorant Garamond\',serif;font-size:1rem;color:#1a0a06;margin-bottom:4px">'+i.name+'</div>'
       +'<div style="font-family:\'Jost\',sans-serif;font-size:11px;color:#c9a24e;margin-bottom:10px">&#8377;'+i.price.toLocaleString()+'</div>'
       +'<div style="display:flex;align-items:center;gap:10px">'
@@ -304,12 +303,12 @@ async function _processCartCheckout(customer){
       body:JSON.stringify({amount:amount,currency:'INR',receipt:'cart_'+Date.now()})});
     var order=await res.json();
     if(!order.id){alert('Could not initiate payment.');return;}
-    new window.Razorpay({
+    var rzp2 = new window.Razorpay({
       key:window.__RAZORPAY_KEY||'', amount:order.amount, currency:order.currency,
       name:'SissyTrends', description:items.length+' item(s) | '+customer.name, order_id:order.id,
       handler:async function(r){
         var v=await fetch(base+'/api/razorpay/verify',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify(Object.assign({},r,{amount:order.amount,product_id:0,product_name:items.map(function(i){return i.name;}).join(', '),customer_name:customer.name||r.name||'',customer_email:customer.email||r.email||'',customer_phone:customer.phone||r.contact||'',customer_address:customer.address||''}))});
+          body:JSON.stringify(Object.assign({},r,{amount:order.amount,product_id:0,product_name:items.map(function(i){return i.name;}).join(', '),customer_name:customer.name||r.name||'',customer_email:customer.email||r.email||'',customer_phone:customer.phone||r.contact||'',customer_address:customer.address||window._lastCustomerAddress||''}))});
         var res2=await v.json();
         if(res2.ok){
           saveCartItems([]); updateCartBadge(); closeCartDrawer();
@@ -570,31 +569,6 @@ function openModal(productOrId) {
     heartBtn.innerHTML = `<span>${inWL ? '♥' : '♡'} ${inWL ? 'In Wishlist' : 'Add to Wishlist'}</span>`;
     heartBtn.style.borderColor = inWL ? '#c0392b' : '';
     heartBtn.style.color       = inWL ? '#c0392b' : '';
-  }
-
-  // Update buttons based on stock & availability
-  const _isSoldOut = product.available === false;
-  const _isOutOfStock = product.available !== false && product.stock !== null && product.stock !== undefined && product.stock === 0;
-  const _cartBtn = document.getElementById('modalCartBtn');
-  const _buyBtn  = document.getElementById('modalBuyBtn');
-  const _notBtn  = document.getElementById('modalNotifyBtn');
-  if (_cartBtn && _buyBtn && _notBtn) {
-    _cartBtn.removeAttribute('disabled'); _buyBtn.removeAttribute('disabled');
-    _cartBtn.style.opacity='1'; _buyBtn.style.opacity='1';
-    _cartBtn.style.cursor='pointer'; _buyBtn.style.cursor='pointer';
-    _cartBtn.style.display='flex'; _buyBtn.style.display='flex';
-    _notBtn.style.display='none';
-    if (_isSoldOut) {
-      _cartBtn.style.display='none'; _buyBtn.style.display='none';
-      _notBtn.style.display='flex';
-      var _wt = encodeURIComponent('Hi SissyTrends! I am interested in ' + product.name + ' (ID: ' + (product.productId||'-') + '). Please notify me when it is back in stock.');
-      _notBtn.href = 'https://wa.me/919344182144?text=' + _wt;
-      _notBtn.onclick = function(){ var b=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?'http://localhost:5000':''; fetch(b+'/api/products/'+product.id+'/notify',{method:'POST'}).catch(function(){}); };
-    } else if (_isOutOfStock) {
-      _cartBtn.setAttribute('disabled','disabled'); _buyBtn.setAttribute('disabled','disabled');
-      _cartBtn.style.opacity='0.4'; _buyBtn.style.opacity='0.4';
-      _cartBtn.style.cursor='not-allowed'; _buyBtn.style.cursor='not-allowed';
-    }
   }
 
   overlay.classList.add('open');
@@ -1050,6 +1024,10 @@ function getCartItemCount() {
 }
 
 function getCartItemsForShipping() {
+  // If Buy Now mode, use only the current product for shipping calculation
+  if (window._buyNowProduct) {
+    return [{ category: window._buyNowProduct.category, qty: 1 }];
+  }
   try {
     var items = JSON.parse(localStorage.getItem('st_cart_items') || '[]');
     return items.length ? items : null;
@@ -1218,9 +1196,8 @@ function confirmMapAddress() {
     if (el && el.parentNode) el.parentNode.appendChild(shipEl);
   }
   shipEl.innerHTML =
-    '<span style="color:#8c7b6b">~'+distKm+' km &mdash; '+ship.weightKg+'kg &mdash; </span>'
-    +'<span style="color:#7a1f2e;font-weight:600">Shipping: '+ship.label+'</span>'
-    +(ship.breakdown ? '<br><span style="color:#aaa;font-size:10px">'+ship.breakdown+'</span>' : '');
+    '<span style="color:#8c7b6b">~'+distKm+' km &mdash; </span>'
+    +'<span style="color:#7a1f2e;font-weight:600">Shipping: '+ship.label+'</span>';
 
   window._checkoutShipping = ship.cost;
   window._checkoutDistKm   = distKm;
@@ -1285,8 +1262,7 @@ function selectAddress(displayName, lat, lon) {
   }
   shipEl.innerHTML =
     '<span style="color:#8c7b6b">~' + distKm + ' km &mdash; </span>'
-    + '<span style="color:#7a1f2e;font-weight:600">Shipping: ' + ship.label + '</span>'
-    + (ship.breakdown ? '<br><span style="color:#aaa;font-size:10px">' + ship.breakdown + '</span>' : '');
+    + '<span style="color:#7a1f2e;font-weight:600">Shipping: ' + ship.label + '</span>';
 }
 
 // ── Pincode-based shipping calculation ───────────────────────────
@@ -1457,8 +1433,7 @@ function lookupPincode(pin) {
     if (shipEl) {
       shipEl.innerHTML =
         '<span style="color:#8c7b6b">' + state + ' \u00b7 ~' + distKm + ' km \u00b7 </span>'
-        + '<span style="color:#7a1f2e;font-weight:700">Shipping: ' + ship.label + '</span>'
-        + '<br><span style="color:#aaa;font-size:10px">' + ship.breakdown + '</span>';
+        + '<span style="color:#7a1f2e;font-weight:700">Shipping: ' + ship.label + '</span>';
     }
   }, 300);
 }
@@ -1615,17 +1590,41 @@ function submitSimpleCheckout() {
   if (!pincode || !/^\d{6}$/.test(pincode)) { errEl.textContent = 'Please enter a valid 6-digit pincode.'; errEl.style.display = 'block'; return; }
 
   errEl.style.display = 'none';
+  window._lastCustomerAddress = address;
+  sessionStorage.setItem('st_last_address', address);
+  window._lastCustomerName  = name;
+  window._lastCustomerPhone = phone;
+  window._lastCustomerEmail = email;
   closeSimpleCheckout();
   var modal = document.getElementById('simpleCheckoutModal');
   if (modal && modal._callback) {
+    // Save customer details to DB immediately before Razorpay opens
+    var base = (location.hostname==='localhost'||location.hostname==='127.0.0.1')?'http://localhost:5000':'';
+    fetch(base+'/api/orders/attempt',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        order_id:window._pendingOrderId='ST-'+Math.random().toString(36).substr(2,8).toUpperCase(),
+        payment_id:'',
+        status:'in-progress',
+        amount:0,
+        product_name:'',
+        customer_name:name,
+        customer_email:email,
+        customer_phone:'91'+phone,
+        customer_address:address
+      })
+    }).catch(function(){});
     modal._callback({ name:name, phone:'91'+phone, email:email, address:address, shipping:window._checkoutShipping||0, distKm:window._checkoutDistKm||0, shippingLabel:window._checkoutShipLabel||'Free Delivery' });
   }
 }
 
 async function buyNow() {
   if (!_modalProduct) return;
+  window._buyNowProduct = _modalProduct; // store so shipping uses this product only
   openSimpleCheckout(async function(customer) {
     await _processBuyNow(customer);
+    window._buyNowProduct = null;
   });
 }
 
@@ -1686,7 +1685,7 @@ async function _processBuyNow(customer) {
             customer_name:       customer.name    || response.name    || '',
             customer_email:      customer.email   || response.email   || '',
             customer_phone:      customer.phone   || response.contact || '',
-            customer_address:    customer.address || ''
+            customer_address:    customer.address||window._lastCustomerAddress||''
           })
         });
         const result = await verify.json();
@@ -1741,8 +1740,9 @@ async function _processBuyNow(customer) {
     });
     options.modal = {
       ondismiss: function() {
+        // Update the in-progress row instead of creating a new dismissed row
         logPaymentAttempt({
-          order_id:      order.id,
+          order_id:      window._pendingOrderId || order.id,
           payment_id:    '',
           status:        'dismissed',
           error_reason:  'Customer closed payment window',
@@ -1752,7 +1752,8 @@ async function _processBuyNow(customer) {
           product_name:  product.name,
           customer_name: customer.name,
           customer_email:customer.email,
-          customer_phone:customer.phone
+          customer_phone:customer.phone,
+          customer_address:customer.address||window._lastCustomerAddress||sessionStorage.getItem('st_last_address')||''
         });
       }
     };
@@ -2066,7 +2067,7 @@ function renderProductCard(product, delay = 0) {
           <div style="position:absolute;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:2">
             <div style="background:#3a3a3a;color:#faf5ec;font-family:'Cinzel',serif;font-size:11px;letter-spacing:.25em;padding:8px 18px;transform:rotate(-15deg)">OUT OF STOCK</div>
           </div>` : ''}
-        ${false ? `<div style="position:absolute;bottom:8px;left:8px;background:#f0a500;color:#1a0a06;font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.1em;padding:3px 8px;font-weight:600">Only ${product.stock} left!</div>` : ''}
+        ${lowStock ? `<div style="position:absolute;bottom:8px;left:8px;background:#f0a500;color:#1a0a06;font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.1em;padding:3px 8px;font-weight:600">Only ${product.stock} left!</div>` : ''}
         <button data-wishlist-id="${product.id}"
                 onclick="event.stopPropagation();addToWishlist(_productCache[${product.id}])"
                 style="position:absolute;top:10px;right:10px;background:rgba(26,10,6,.7);border:1px solid rgba(201,162,78,.3);color:${inWL?'#c0392b':'rgba(250,245,236,.7)'};width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;z-index:3">
@@ -2086,7 +2087,10 @@ function renderProductCard(product, delay = 0) {
             style="width:100%;padding:11px;background:#25d366;border:none;color:#fff;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none">
             <svg width="14" height="14" fill="white" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.528 5.84L.057 23.5l5.797-1.499A11.938 11.938 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.854 0-3.6-.497-5.11-1.367l-.366-.218-3.44.889.921-3.32-.239-.384A9.955 9.955 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
             Notify Me on WhatsApp
-          </a>` : `
+          </a>` : isOut ? `
+          <button class="btn-primary" disabled style="width:100%;justify-content:center;padding:11px;opacity:0.4;cursor:not-allowed">
+            <span>Out of Stock</span>
+          </button>` : `
           <button class="btn-primary" style="width:100%;justify-content:center;padding:11px"
             onclick="event.stopPropagation();openModal(${product.id})">
             <span>Quick View</span><span class="arrow">→</span>
@@ -2187,12 +2191,9 @@ function injectNav(activePage, isRoot) {
         <div style="display:flex;flex-direction:column;gap:10px">
           <button id="modalWishlistBtn" class="btn-primary" style="width:100%;justify-content:center" onclick="modalWishlistToggle()"><span>♡ Add to Wishlist</span></button>
           <div style="display:flex;gap:8px">
-            <button id="modalCartBtn" style="flex:1;padding:12px;border:none;cursor:pointer;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="addToCart(_modalProduct)">+ Add to Cart</button>
-            <button id="modalBuyBtn" style="flex:1;padding:12px;border:none;cursor:pointer;background:#7a1f2e;color:#faf5ec;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="buyNow()">Buy Now</button>
+            <button style="flex:1;padding:12px;border:none;cursor:pointer;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="addToCart(_modalProduct)">+ Add to Cart</button>
+            <button style="flex:1;padding:12px;border:none;cursor:pointer;background:#7a1f2e;color:#faf5ec;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="buyNow()">Buy Now</button>
           </div>
-          <a id="modalNotifyBtn" href="#" target="_blank" style="display:none;width:100%;padding:12px;background:#25d366;border:none;color:#fff;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;align-items:center;justify-content:center;gap:8px;text-decoration:none;box-sizing:border-box">
-            &#128172; Notify Me When Back in Stock
-          </a>
           <button class="btn-wa" style="width:100%;justify-content:center;padding:12px;border:none;cursor:pointer;background:#25d366;color:#fff;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;display:flex;align-items:center;gap:8px" onclick="enquireOnWhatsApp()">
             <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.528 5.84L.057 23.5l5.797-1.499A11.938 11.938 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.854 0-3.6-.497-5.11-1.367l-.366-.218-3.44.889.921-3.32-.239-.384A9.955 9.955 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
             Enquire on WhatsApp

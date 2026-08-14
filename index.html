@@ -258,8 +258,18 @@
 
   // Push navbar below bar using direct style — no CSS class needed
   var BAR_H = 38;
-  var nav = document.getElementById('navbar');
-  if(nav) nav.style.top = BAR_H+'px';
+  function applyNavTop() {
+    var nav = document.getElementById('navbar');
+    if (nav) { nav.style.top = BAR_H + 'px'; return true; }
+    return false;
+  }
+  // Retry until navbar is injected by main.js
+  if (!applyNavTop()) {
+    var _retries = 0;
+    var _t = setInterval(function() {
+      if (applyNavTop() || _retries++ > 20) clearInterval(_t);
+    }, 100);
+  }
 
   var collapsed = false;
   window.addEventListener('scroll',function(){
@@ -273,7 +283,7 @@
     } else if(window.scrollY === 0 && collapsed){
       collapsed = false;
       if(bar) bar.classList.remove('hidden');
-      nav.style.top = BAR_H+'px';
+      applyNavTop();
     }
   },{passive:true});
 })();

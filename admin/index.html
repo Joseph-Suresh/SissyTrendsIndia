@@ -930,8 +930,16 @@ async function loadAndRenderOrders() {
   tabEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(250,245,236,.4)">Loading…</div>';
   try {
     const r    = await fetch(`${API}/orders`);
-    const orders = await r.json();
-    const total  = orders.reduce((s, o) => s + (o.amount || 0), 0);
+    const allOrders = await r.json();
+    // Deduplicate: keep only the latest row per order_id
+    const seen = new Map();
+    allOrders.forEach(o => {
+      const key = o.order_id;
+      if (!seen.has(key) || new Date(o.created_at) > new Date(seen.get(key).created_at))
+        seen.set(key, o);
+    });
+    const orders = Array.from(seen.values()).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    const total  = orders.filter(o=>!o.status||o.status==='paid').reduce((s, o) => s + (o.amount || 0), 0);
     tabEl.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:16px">
         <h2 class="section-heading" style="margin-bottom:0">Orders (${orders.length})</h2>
@@ -941,25 +949,30 @@ async function loadAndRenderOrders() {
       </div>
       <div class="table-wrap">
         <table class="product-table">
-          <thead><tr><th>Order ID</th><th>Payment ID</th><th>Product</th><th>Customer</th><th>Phone</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+          <thead><tr><th>Internal ID</th><th>Razorpay ID</th><th>Payment ID</th><th>Product</th><th>Customer</th><th>Phone</th><th>Email</th><th>Address</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
           <tbody>${orders.length === 0
-            ? '<tr><td colspan="8" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No orders yet.</td></tr>'
+            ? '<tr><td colspan="11" style="text-align:center;padding:40px;color:rgba(250,245,236,.3);font-style:italic">No orders yet.</td></tr>'
             : orders.map(o => {
-              const isPaid      = !o.status || o.status === 'paid';
-              const isFailed    = o.status === 'failed';
-              const isDismissed = o.status === 'dismissed';
-              const statusColor = isPaid ? '#2ea043' : isFailed ? '#c0392b' : '#e67e22';
-              const statusLabel = isPaid ? '&#10003; Paid' : isFailed ? '&#10007; Failed' : '&minus; Dismissed';
-              const statusTip   = isFailed ? (o.error_reason||o.error_desc||'') : isDismissed ? 'Customer closed window' : '';
-              return '<tr style="opacity:'+(isPaid?1:0.7)+'">'
+              const isPaid       = !o.status || o.status === 'paid';
+              const isFailed     = o.status === 'failed';
+              const isDismissed  = o.status === 'dismissed';
+              const isInProgress = o.status === 'in-progress' || o.status === 'pending';
+              const isTimedOut   = isInProgress && o.created_at && (new Date() - new Date(o.created_at.replace(' ','T')+'Z')) > 30*60*1000;
+              const statusColor  = isPaid?'#2ea043':isFailed?'#c0392b':isTimedOut?'rgba(250,245,236,.3)':isInProgress?'#c9a24e':'#e67e22';
+              const statusLabel  = isPaid?'&#10003; Paid':isFailed?'&#10007; Failed':isTimedOut?'&#9711; Timed Out':isInProgress?'&#9203; In Progress':'&minus; Dismissed';
+              const statusTip    = isFailed?(o.error_reason||o.error_desc||''):isDismissed?'Customer closed window':isTimedOut?'No response after 30 mins':isInProgress?'Payment initiated':'';
+              return '<tr style="opacity:'+(isPaid||isInProgress?1:0.7)+'">'
                 +'<td style="color:#c9a24e;font-size:11px">'+(o.order_id||'&mdash;')+'</td>'
+                +'<td style="color:rgba(201,162,78,.5);font-size:10px">'+(o.razorpay_order_id||'&mdash;')+'</td>'
                 +'<td style="color:rgba(250,245,236,.5);font-size:11px">'+(o.payment_id||'&mdash;')+'</td>'
                 +'<td style="color:#faf5ec">'+(o.product_name||'&mdash;')+'</td>'
-                +'<td style="color:#faf5ec;font-size:12px">'+(o.customer_name||'&mdash;')+'<br><span style="color:rgba(250,245,236,.4);font-size:11px">'+(o.customer_email||'')+'</span></td>'
+                +'<td style="color:#faf5ec;font-size:12px">'+(o.customer_name||'&mdash;')+'</td>'
                 +'<td style="color:rgba(250,245,236,.6);font-size:12px">'+(o.customer_phone||'&mdash;')+'</td>'
+                +'<td style="color:rgba(250,245,236,.5);font-size:11px">'+(o.customer_email||'&mdash;')+'</td>'
+                +'<td style="color:rgba(250,245,236,.6);font-size:11px;max-width:160px;white-space:normal">'+(o.customer_address||'&mdash;')+'</td>'
                 +'<td style="color:#c9a24e;font-weight:600">'+(isPaid?'&#8377;'+Math.round((o.amount||0)/100).toLocaleString():'&mdash;')+'</td>'
                 +'<td><span style="color:'+statusColor+';font-size:11px">'+statusLabel+'</span>'+(statusTip?'<br><span style="font-size:10px;color:rgba(250,245,236,.3)">'+statusTip+'</span>':'')+'</td>'
-                +'<td style="font-size:11px;color:rgba(250,245,236,.4);white-space:nowrap">'+(o.created_at||'').substring(0,16).replace('T',' ')+'</td>'
+                +'<td style="font-size:11px;color:rgba(250,245,236,.4);white-space:nowrap">'+(o.created_at?(function(d){var dt=new Date(d.replace(' ','T')+'Z');return dt.toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});})( o.created_at):'—')+'</td>'
                 +'</tr>';
             }).join('')
           }</tbody>
