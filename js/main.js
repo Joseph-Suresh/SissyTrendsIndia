@@ -571,6 +571,31 @@ function openModal(productOrId) {
     heartBtn.style.color       = inWL ? '#c0392b' : '';
   }
 
+  // Update modal buttons based on stock & availability
+  var _isSO = product.available === false;
+  var _isOOS = product.available !== false && product.stock !== null && product.stock !== undefined && product.stock === 0;
+  var _cBtn = document.getElementById('modalCartBtn');
+  var _bBtn = document.getElementById('modalBuyBtn');
+  var _nBtn = document.getElementById('modalNotifyBtn');
+  if (_cBtn && _bBtn && _nBtn) {
+    _cBtn.removeAttribute('disabled'); _bBtn.removeAttribute('disabled');
+    _cBtn.style.opacity='1'; _bBtn.style.opacity='1';
+    _cBtn.style.cursor='pointer'; _bBtn.style.cursor='pointer';
+    _cBtn.style.display='flex'; _bBtn.style.display='flex';
+    _nBtn.style.display='none';
+    if (_isSO) {
+      _cBtn.style.display='none'; _bBtn.style.display='none';
+      _nBtn.style.display='flex';
+      var _wt=encodeURIComponent('Hi SissyTrends! I am interested in '+product.name+' (ID: '+(product.productId||'-')+'). Please notify me when it is back in stock.');
+      _nBtn.href='https://wa.me/919344182144?text='+_wt;
+      _nBtn.onclick=function(){var b=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?'http://localhost:5000':'';fetch(b+'/api/products/'+product.id+'/notify',{method:'POST'}).catch(function(){});return true;};
+    } else if (_isOOS) {
+      _cBtn.setAttribute('disabled','disabled'); _bBtn.setAttribute('disabled','disabled');
+      _cBtn.style.opacity='0.4'; _bBtn.style.opacity='0.4';
+      _cBtn.style.cursor='not-allowed'; _bBtn.style.cursor='not-allowed';
+    }
+  }
+
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
 }
@@ -2191,9 +2216,12 @@ function injectNav(activePage, isRoot) {
         <div style="display:flex;flex-direction:column;gap:10px">
           <button id="modalWishlistBtn" class="btn-primary" style="width:100%;justify-content:center" onclick="modalWishlistToggle()"><span>♡ Add to Wishlist</span></button>
           <div style="display:flex;gap:8px">
-            <button style="flex:1;padding:12px;border:none;cursor:pointer;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="addToCart(_modalProduct)">+ Add to Cart</button>
-            <button style="flex:1;padding:12px;border:none;cursor:pointer;background:#7a1f2e;color:#faf5ec;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="buyNow()">Buy Now</button>
+            <button id="modalCartBtn" style="flex:1;padding:12px;border:none;cursor:pointer;background:#c9a24e;color:#1a0a06;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="addToCart(_modalProduct)">+ Add to Cart</button>
+            <button id="modalBuyBtn" style="flex:1;padding:12px;border:none;cursor:pointer;background:#7a1f2e;color:#faf5ec;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600" onclick="buyNow()">Buy Now</button>
           </div>
+          <a id="modalNotifyBtn" href="#" target="_blank" style="display:none;width:100%;padding:12px;background:#25d366;color:#fff;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;align-items:center;justify-content:center;gap:8px;text-decoration:none;box-sizing:border-box">
+            &#128172; Notify Me When Back in Stock
+          </a>
           <button class="btn-wa" style="width:100%;justify-content:center;padding:12px;border:none;cursor:pointer;background:#25d366;color:#fff;font-family:'Jost',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;display:flex;align-items:center;gap:8px" onclick="enquireOnWhatsApp()">
             <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.528 5.84L.057 23.5l5.797-1.499A11.938 11.938 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.854 0-3.6-.497-5.11-1.367l-.366-.218-3.44.889.921-3.32-.239-.384A9.955 9.955 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
             Enquire on WhatsApp
